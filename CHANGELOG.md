@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.142.0] - 2026-11-11
+
 - **App:** depois de atualizar pelo botao, o app volta como estava: reabre o jogo (so reconecta, com o char em mundo) e religa o bot se ele estava rodando. O aviso vale por 10 min. Passa a valer nas atualizacoes feitas a partir desta versao.
 
 ## [0.141.1] - 2026-11-11
