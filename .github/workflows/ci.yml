@@ -32,6 +32,12 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # O build completo pega o que os testes nao pegam (o CSS do Tailwind 4 nao
+      # compilava e os testes passavam).
+      - name: Build do app (main, renderer e CSS)
+        run: |
+          npm run build
+          grep -q "#0b0d10" dist/styles.css || { echo "::error::dist/styles.css sem a cor do tema"; exit 1; }
 
   guard:
     name: Guarda de conteudo

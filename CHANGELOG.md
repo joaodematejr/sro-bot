@@ -6,8 +6,10 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 - **App:** Continental com mapa "Automatico": cada char rola no mapa mais alto que o nivel dele libera (Lv.87 no Asia Minor, Lv.60 no Desert), tambem no ciclo entre chars. Vem como padrao numa instalacao nova; os mapas 4 a 7 ganharam o nome real (Roc Mountain, Eastern Europe, Asia Minor, Central Asia).
 
-- **Dev:** TypeScript 7 (`tsconfig` com `moduleResolution: bundler`), `@types/node` 20.19 (o Node do Electron 31), esbuild 0.28 e sql.js 1.15 (SQLite 3.54). O canal do engine aceita o `data` do socket como texto ou Buffer. Sem mudanca de comportamento no app.
-- **CI:** testes, typecheck e guarda de conteudo em todo push e PR; Dependabot semanal.
+- **Dev:** TypeScript 7 (`tsconfig` com `moduleResolution: bundler`), esbuild 0.28 e sql.js 1.15 (SQLite 3.54). O canal do engine aceita o `data` do socket como texto ou Buffer. Sem mudanca de comportamento no app.
+- **Dev:** Electron 45 (Node 24) com `@types/node` 24.19 e electron-builder 26.
+- **Dev:** Tailwind 4 com o `@tailwindcss/cli` e a configuracao de sempre (`@config`); o build do CSS tinha quebrado com o Tailwind 4. O painel ficou igual (cores, fontes, bordas, larguras), com tres ajustes pequenos do Tailwind 4: o conteudo de cada aba comeca 16 px mais acima (o `space-y` deixou de somar a margem dos paineis escondidos), os titulos de secao ficaram 4 px mais baixos e o cabecalho da tabela da IA 2 px. O cursor de mao nos botoes foi mantido.
+- **CI:** testes, typecheck, build completo do app e guarda de conteudo em todo push e PR; Dependabot semanal.
 - **CI:** o engine compila no Linux com o NDK r27c em todo push e PR (artefato `engine-build`); o `engine/build.sh` roda no Windows, no Linux e no macOS. Tag `v*` gera o EXE portatil com o engine dentro e publica o Release com as notas do CHANGELOG.
 
 ## [0.140.0] - 2026-11-11
