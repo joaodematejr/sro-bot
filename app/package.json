@@ -22,7 +22,7 @@
     "dist:win": "npm run build && electron-builder --win portable --x64 && node -e \"require('fs').copyFileSync('GUIA-TESTE.md','release/LEIA-ME.md')\""
   },
   "devDependencies": {
-    "@types/node": "20.14.9",
+    "@types/node": "26.6.6",
     "electron": "31.3.1",
     "electron-builder": "24.13.3",
     "esbuild": "0.28.2",
