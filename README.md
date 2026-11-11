@@ -69,10 +69,17 @@ jogo levantado até aqui está em [engine/DISCOVERY.md](engine/DISCOVERY.md).
 - Node.js 20 ou mais novo, para compilar o app.
 - Android NDK r27c (vem com o Unity), só para recompilar o engine.
 
+## Baixar pronto
+
+O EXE portátil, com o engine dentro, sai em cada
+[Release](https://github.com/joaodematejr/sro-bot/releases), junto do guia de uso
+(`LEIA-ME.md`). O engine compilado de cada commit também fica como artefato
+`engine-build` nas execuções do [CI](https://github.com/joaodematejr/sro-bot/actions/workflows/ci.yml).
+
 ## Compilar e rodar
 
 Primeiro o engine (a pasta `engine/build/` não vai no repositório; o app e o EXE
-pegam o engine dali):
+pegam o engine dali). Funciona no Git Bash do Windows, no Linux e no macOS:
 
 ```
 NDK_HOME="/caminho/do/NDK" bash engine/build.sh

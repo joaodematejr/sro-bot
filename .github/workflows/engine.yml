@@ -1,0 +1,37 @@
+name: Engine
+
+# Compila o engine (libsroengine.so e libsroloader.so, arm64) com o NDK r27c,
+# o mesmo que vem com o Unity, e guarda os dois como artefato "engine-build".
+# Chamado pelo CI e pelo Release.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Compilar o engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27c
+          add-to-path: false
+      - run: bash engine/build.sh
+        env:
+          NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+      - name: Conferir arm64
+        run: |
+          file engine/build/*.so
+          for f in engine/build/libsroengine.so engine/build/libsroloader.so; do
+            file "$f" | grep -q "ARM aarch64" || { echo "::error::$f nao e arm64"; exit 1; }
+          done
+          md5sum engine/build/*.so
+      - uses: actions/upload-artifact@v4
+        with:
+          name: engine-build
+          path: engine/build/*.so
+          if-no-files-found: error

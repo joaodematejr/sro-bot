@@ -39,3 +39,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: bash .github/scripts/guard.sh
+
+  engine:
+    uses: ./.github/workflows/engine.yml

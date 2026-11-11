@@ -6,6 +6,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 - **Dev:** TypeScript 7 (`tsconfig` com `moduleResolution: bundler`), `@types/node` 20.19 (o Node do Electron 31), esbuild 0.28 e sql.js 1.15 (SQLite 3.54). O canal do engine aceita o `data` do socket como texto ou Buffer. Sem mudanca de comportamento no app.
 - **CI:** testes, typecheck e guarda de conteudo em todo push e PR; Dependabot semanal.
+- **CI:** o engine compila no Linux com o NDK r27c em todo push e PR (artefato `engine-build`); o `engine/build.sh` roda no Windows, no Linux e no macOS. Tag `v*` gera o EXE portatil com o engine dentro e publica o Release com as notas do CHANGELOG.
 
 ## [0.140.0] - 2026-11-11
 
