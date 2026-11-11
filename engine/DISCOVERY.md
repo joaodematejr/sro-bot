@@ -516,6 +516,25 @@ carregar antes de despejar.
   (thread do socket, e na epoca o texto no meio do caminho ainda virava `0`)
   prendeu o engine ate reiniciar o jogo. Depois do premio o jogo mostra o `RewardDlg`.
 
+## Guild Store (2026-11-11)
+
+- E a loja generica (`XNormalShopDocument`) no sistema `XSys_Mall_Guild` (324),
+  `ShopType_Guild` (2). Lista: `callsi XNormalShopDocument ReqGoodsList 1 324 0`
+  (seta `m_curSysType` 324 e enche o `m_goodsList`, 34 itens).
+- Item (`XNormalShopGoods`): `item itemID`, `item uid` (= ID da ShopTable),
+  `priceType` (moeda: 22 = contribuicao da guilda), `priceValue` (float; o GETP
+  devolve os bits), `soldNum` (dia), `totalSoldNum`, `weeklyBuyCount`.
+- Limites na ShopTable: `XNormalShopDocument GetDataById:<uid>` `DailyCountCondition`,
+  `CountCondition`, `WeekCountCondition`, `ItemOverlap` (unidades por compra, 1).
+- Comprar: `callsi XNormalShopDocument ReqBuy 1 <indice> 0` (1 unidade; manda o
+  `RpcC2G_BuyShopItem`). Nao usar `DoBuyItem`: tem as versoes (XNormalShopGoods,
+  uint) e (ulong, uint), as duas com 2 args.
+- Semanais que o bot compra: Pet Eggs - Precious (605) 500 x8, Pet Eggs - Rare (606)
+  1000 x3, Dimension Hole - Forgotten World (85) 400 x2 = 7.800 de contribuicao. Ha
+  um segundo Dimension Hole pago com a moeda 89 (fica de fora).
+- Provado ao vivo: 13 compras, cada uma com a semana +1 e a contribuicao caindo o
+  preco exato (247.070 -> 239.270), Silk e Diamond iguais.
+
 ## Guild utilities (2026-11-07, char principal no servidor principal)
 
 - Na guilda: `XGuildDocument get_bInGuild` (vem false nos primeiros segundos depois

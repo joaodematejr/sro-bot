@@ -646,9 +646,10 @@ interface GuildUiConfig {
   chests: boolean;
   salary: boolean;
   redPacket: boolean;
+  storeWeekly?: boolean; // gasta contribuicao: desligado numa instalacao nova
 }
 
-const GUILD_DEFAULT: GuildUiConfig = { signIn: "normal", chests: true, salary: true, redPacket: true };
+const GUILD_DEFAULT: GuildUiConfig = { signIn: "normal", chests: true, salary: true, redPacket: true, storeWeekly: false };
 
 function readGuildUi(): GuildUiConfig {
   const v = ($("gu-signin") as HTMLSelectElement).value;
@@ -657,6 +658,7 @@ function readGuildUi(): GuildUiConfig {
     chests: ($("gu-chests") as HTMLInputElement).checked,
     salary: ($("gu-salary") as HTMLInputElement).checked,
     redPacket: ($("gu-red") as HTMLInputElement).checked,
+    storeWeekly: ($("gu-store") as HTMLInputElement).checked,
   };
 }
 
@@ -665,6 +667,7 @@ function applyGuildUi(c: GuildUiConfig): void {
   ($("gu-chests") as HTMLInputElement).checked = c.chests;
   ($("gu-salary") as HTMLInputElement).checked = c.salary;
   ($("gu-red") as HTMLInputElement).checked = c.redPacket;
+  ($("gu-store") as HTMLInputElement).checked = !!c.storeWeekly;
 }
 
 function loadGuildConfig(): GuildUiConfig {

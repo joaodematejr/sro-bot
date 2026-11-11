@@ -42,7 +42,7 @@ contextBridge.exposeInMainWorld("sro", {
   runFirm: (cfg: { stopAfter: number; maxQuality: number; allowItems: number[]; askHelp: boolean; allowTeleport: boolean }) =>
     ipcRenderer.invoke("engine:firm", cfg),
   stopFirm: () => ipcRenderer.invoke("engine:firmstop"),
-  runGuild: (cfg: { signIn: string; chests: boolean; salary: boolean; redPacket: boolean }) =>
+  runGuild: (cfg: { signIn: string; chests: boolean; salary: boolean; redPacket: boolean; storeWeekly?: boolean }) =>
     ipcRenderer.invoke("engine:guild", cfg),
   stopGuild: () => ipcRenderer.invoke("engine:guildstop"),
   runActChests: () => ipcRenderer.invoke("engine:actchest"),

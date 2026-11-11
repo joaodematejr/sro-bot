@@ -26,9 +26,86 @@ export interface GuildConfig {
   chests: boolean; // baus de progresso do sign-in
   salary: boolean;
   redPacket: boolean;
+  storeWeekly?: boolean; // compra o limite semanal dos itens de GUILD_STORE_WEEKLY (gasta contribuicao)
 }
 
 export const DEFAULT_GUILD_CONFIG: GuildConfig = { signIn: "normal", chests: true, salary: true, redPacket: true };
+
+// Loja da guilda (Guild Store) por metodo, lida no XMainClient.dll e ao vivo em
+// 2026-11-11: e a loja generica (XNormalShopDocument) no sistema XSys_Mall_Guild
+// (324). ReqGoodsList(324) enche o m_goodsList (XNormalShopGoods: item itemID,
+// priceType = moeda, priceValue = preco em float, weeklyBuyCount); o limite
+// semanal vem da ShopTable (GetDataById:<uid> WeekCountCondition). Comprar:
+// ReqBuy(indice), 1 unidade por pedido (a outra entrada, DoBuyItem, tem duas
+// versoes com 2 args). Provado: 1 Pet Eggs - Precious por 500 de contribuicao.
+// A contagem da semana zera no domingo; a loja diz o que ainda da pra comprar.
+export const GUILD_STORE_SYS = 324;
+export const GUILD_CONTRIBUTION = 22; // XBagDocument GetVirtualItemCount:22
+export const GUILD_STORE_LIST_BODY = `callsi XNormalShopDocument ReqGoodsList 1 ${GUILD_STORE_SYS} 0`;
+export const GUILD_STORE_WEEKLY: { itemId: number; name: string }[] = [
+  { itemId: 605, name: "Pet Eggs - Precious" }, // 500, 8 por semana
+  { itemId: 606, name: "Pet Eggs - Rare" }, // 1000, 3 por semana
+  { itemId: 85, name: "Dimension Hole - Forgotten World" }, // 400, 2 por semana (o de moeda 89 fica de fora)
+];
+export const guildStoreBuyBody = (index: number) => `callsi XNormalShopDocument ReqBuy 1 ${Math.floor(index)} 0`;
+
+export interface StoreGoods {
+  index: number;
+  itemId: number;
+  priceType: number;
+  price: number;
+  week: number; // comprado nesta semana
+  weekLimit: number; // 0 = sem limite semanal (nao entra)
+}
+
+// Proximo item a comprar: so os da lista, so pagos com contribuicao, so com limite
+// semanal e ainda abaixo dele, e com saldo pra pagar. undefined = nada a comprar.
+export function nextStoreBuy(goods: StoreGoods[], contribution: number): StoreGoods | undefined {
+  for (const want of GUILD_STORE_WEEKLY) {
+    const g = goods.find((x) => x.itemId === want.itemId && x.priceType === GUILD_CONTRIBUTION && x.weekLimit > 0);
+    if (g && g.week < g.weekLimit && g.price > 0 && contribution >= g.price) return g;
+  }
+  return undefined;
+}
+
+export function storeWeeklyText(goods: StoreGoods[]): string {
+  return GUILD_STORE_WEEKLY.map((w) => {
+    const g = goods.find((x) => x.itemId === w.itemId && x.priceType === GUILD_CONTRIBUTION && x.weekLimit > 0);
+    return g ? `${w.name} ${g.week}/${g.weekLimit}` : `${w.name} fora da loja`;
+  }).join(", ");
+}
+
+// Float guardado como bits no int do GETP.
+function bitsToFloat(i: number): number {
+  const b = new DataView(new ArrayBuffer(4));
+  b.setInt32(0, i, true);
+  return b.getFloat32(0, true);
+}
+
+// Le os itens da loja que interessam (pedir a lista antes com GUILD_STORE_LIST_BODY).
+export async function readStoreGoods(q: EngineQuery): Promise<StoreGoods[]> {
+  const int = async (body: string) => {
+    const r = await q("GETP", body);
+    return r.ok === true && typeof r.int === "number" ? r.int : undefined;
+  };
+  if ((await int("XNormalShopDocument m_curSysType")) !== GUILD_STORE_SYS) return [];
+  const L = "XNormalShopDocument m_goodsList";
+  const n = (await int(`${L} get_Count`)) ?? 0;
+  const out: StoreGoods[] = [];
+  for (let i = 0; i < Math.min(n, 80); i++) {
+    const b = `${L} get_Item:${i}`;
+    const itemId = await int(`${b} item itemID`);
+    if (!GUILD_STORE_WEEKLY.some((w) => w.itemId === itemId)) continue;
+    const uid = await int(`${b} item uid`);
+    const priceType = await int(`${b} priceType`);
+    const bits = await int(`${b} priceValue`);
+    const week = await int(`${b} weeklyBuyCount`);
+    const weekLimit = uid !== undefined ? await int(`XNormalShopDocument GetDataById:${uid} WeekCountCondition`) : undefined;
+    if (itemId === undefined || priceType === undefined || bits === undefined || week === undefined || weekLimit === undefined) continue;
+    out.push({ index: i, itemId, priceType, price: Math.round(bitsToFloat(bits)), week, weekLimit });
+  }
+  return out;
+}
 
 export interface GuildBox {
   index: number;
