@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Compila o engine PoC para arm64 usando o clang do NDK.
-# cmake nao e necessario. Passe o caminho do NDK em NDK_HOME, ou deixe o
-# padrao apontando para o NDK que vem com o Unity.
+# Compila o engine PoC para arm64 usando o clang do NDK (r27c).
+# cmake nao e necessario. Passe o caminho do NDK em NDK_HOME (ou
+# ANDROID_NDK_HOME, como nos runners do GitHub), ou deixe o padrao apontando
+# para o NDK que vem com o Unity. Roda no Windows (Git Bash), Linux e macOS.
 set -euo pipefail
 
-NDK_HOME="${NDK_HOME:-/c/Program Files/Unity/Hub/Editor/6000.6.8f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK}"
+NDK_HOME="${NDK_HOME:-${ANDROID_NDK_HOME:-/c/Program Files/Unity/Hub/Editor/6000.6.8f1/Editor/Data/PlaybackEngines/AndroidPlayer/NDK}}"
 API="${API:-24}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-BIN="$NDK_HOME/toolchains/llvm/prebuilt/windows-x86_64/bin"
-CXX="$BIN/aarch64-linux-android${API}-clang++.cmd"
+# O NDK traz o clang por sistema; no Windows ele e chamado por um .cmd.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) HOST="windows-x86_64"; EXT=".cmd" ;;
+    Darwin*) HOST="darwin-x86_64"; EXT="" ;;
+    *) HOST="linux-x86_64"; EXT="" ;;
+esac
+BIN="$NDK_HOME/toolchains/llvm/prebuilt/$HOST/bin"
+CXX="$BIN/aarch64-linux-android${API}-clang++$EXT"
 
 if [ ! -f "$CXX" ]; then
     echo "clang++ nao encontrado: $CXX" >&2
