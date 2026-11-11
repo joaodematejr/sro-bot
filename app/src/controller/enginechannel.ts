@@ -48,8 +48,9 @@ export function requestOnce(
     // Engine morto: o adb aceita a conexao local e fecha (porta do device sem
     // listener). Sem tratar 'close' a promise nunca resolvia e travava o loop.
     sock.on("close", () => done({ ok: false, erro: "conexao fechada (engine fora?)" }));
+    // Socket sem setEncoding: o data vem como Buffer (o tipo do Node admite texto).
     sock.on("data", (d) => {
-      buf = Buffer.concat([buf, d]);
+      buf = Buffer.concat([buf, typeof d === "string" ? Buffer.from(d) : d]);
       let off = 0;
       while (buf.length - off >= HEADER) {
         const t = buf.toString("ascii", off, off + 4).replace(/\0+$/, "");
@@ -88,7 +89,7 @@ export class EngineChannel {
       this.sock = s;
       let settled = false;
       s.setTimeout(1000);
-      s.on("data", (d) => this.onData(d));
+      s.on("data", (d) => this.onData(typeof d === "string" ? Buffer.from(d) : d));
       s.on("error", () => {
         if (!settled) {
           settled = true;

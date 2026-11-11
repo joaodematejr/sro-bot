@@ -86,8 +86,9 @@ function queryPlayerConn(host: string, port: number, timeoutMs: number): Promise
     // Engine morto: o adb aceita a conexao local e fecha (porta do device sem
     // listener). Sem tratar 'close' a promise nunca resolvia e travava o loop.
     sock.on("close", () => done({ ok: false, erro: "conexao fechada (engine fora?)" }));
+    // Socket sem setEncoding: o data vem como Buffer (o tipo do Node admite texto).
     sock.on("data", (d) => {
-      buf = Buffer.concat([buf, d]);
+      buf = Buffer.concat([buf, typeof d === "string" ? Buffer.from(d) : d]);
       // procura um frame RESP completo
       let off = 0;
       while (buf.length - off >= HEADER) {

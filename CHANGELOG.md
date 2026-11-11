@@ -2,6 +2,11 @@
 
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Uma linha por versao com o que ela trouxe.
 
+## [Nao lancado]
+
+- **Dev:** TypeScript 7 (`tsconfig` com `moduleResolution: bundler`), `@types/node` 20.19 (o Node do Electron 31), esbuild 0.28 e sql.js 1.15 (SQLite 3.54). O canal do engine aceita o `data` do socket como texto ou Buffer. Sem mudanca de comportamento no app.
+- **CI:** testes, typecheck e guarda de conteudo em todo push e PR; Dependabot semanal.
+
 ## [0.140.0] - 2026-11-11
 
 - **App:** no Treino, com jogador de fora do time cacando a menos de 80 m por 2 min, o char troca para o canal mais vazio do mesmo ponto (nunca o Activity Channel); sem canal livre, vai para o proximo ponto.
