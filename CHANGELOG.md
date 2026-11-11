@@ -4,6 +4,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** atualizacao automatica pelos Releases do GitHub (electron-updater). O Release passa a ter o instalador `SRO-Bot-Setup-X.Y.Z.exe`, que se atualiza sozinho: o app confere ao abrir e a cada 2 h, baixa em segundo plano e mostra "Atualizar para vX.Y.Z" no topo; instala so com o clique e reabre o app (o jogo continua aberto; com o Treino rodando, a caca do jogo e religada antes de fechar). O EXE portatil continua, sem auto-update. A versao do app aparece no topo.
+- **CI:** o Release publica tambem o instalador, o `latest.yml` e o `.blockmap`.
+
 ## [0.141.0] - 2026-11-11
 
 Primeira versao publicada em Releases: EXE portatil para Windows com o engine dentro.

@@ -71,9 +71,20 @@ jogo levantado até aqui está em [engine/DISCOVERY.md](engine/DISCOVERY.md).
 
 ## Baixar pronto
 
-O EXE portátil, com o engine dentro, sai em cada
-[Release](https://github.com/joaodematejr/sro-bot/releases), junto do guia de uso
-(`LEIA-ME.md`). O engine compilado de cada commit também fica como artefato
+Cada [Release](https://github.com/joaodematejr/sro-bot/releases) traz, com o
+engine dentro:
+
+- **`SRO-Bot-Setup-X.Y.Z.exe`** (recomendado): instala para o seu usuário do
+  Windows e **se atualiza sozinho**. O app confere os Releases ao abrir e a cada
+  2 h, baixa a versão nova em segundo plano e mostra o botão "Atualizar para
+  vX.Y.Z" no topo; a troca só acontece quando você clica (o jogo continua aberto).
+  Sem assinatura digital, o Windows avisa na primeira instalação ("Mais
+  informações" > "Executar assim mesmo").
+- **`SRO-Bot-X.Y.Z-portable.exe`**: roda sem instalar, mas não se atualiza.
+- **`LEIA-ME.md`**: o guia de uso.
+
+As configurações ficam em `%APPDATA%/sro-bot-app/` e valem para as duas formas.
+O engine compilado de cada commit também fica como artefato
 `engine-build` nas execuções do [CI](https://github.com/joaodematejr/sro-bot/actions/workflows/ci.yml).
 
 ## Compilar e rodar

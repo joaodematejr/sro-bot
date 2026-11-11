@@ -30,6 +30,14 @@ interface PlayerState {
   erro?: string;
 }
 
+// Estado da atualizacao pelos Releases (espelha o UpdateState do main/updater.ts).
+interface UpdateUiState {
+  kind: "off" | "idle" | "downloading" | "ready" | "error";
+  version?: string;
+  pct?: number;
+  reason?: string;
+}
+
 declare global {
   interface Window {
     sro: {
@@ -97,6 +105,10 @@ declare global {
       stopLogin: () => Promise<void>;
       uiLog: (m: string) => void;
       onLog: (cb: (msg: string) => void) => void;
+      appVersion: () => Promise<string>;
+      updateState: () => Promise<UpdateUiState>;
+      updateInstall: () => Promise<boolean>;
+      onUpdate: (cb: (s: UpdateUiState) => void) => void;
     };
   }
 }
@@ -2254,6 +2266,24 @@ function wire(): void {
   });
   // Cada origem no main ja prefixa a sua ([login], [tower], [continental], [watchdog]).
   window.sro.onLog((m) => log(m));
+
+  // Versao e atualizacao: o botao so aparece com a versao nova ja baixada; instalar
+  // so com o clique (ver main/updater.ts).
+  void window.sro.appVersion().then((v) => ($("app-version").textContent = `v${v}`));
+  const showUpdate = (s: UpdateUiState) => {
+    const btn = $("btn-update") as HTMLButtonElement;
+    const ver = $("app-version");
+    btn.classList.toggle("hidden", s.kind !== "ready");
+    if (s.kind === "ready") btn.textContent = `Atualizar para v${s.version}`;
+    ver.title = s.kind === "off" || s.kind === "error" ? s.reason ?? "" : s.kind === "downloading" ? `baixando v${s.version}${s.pct !== undefined ? ` (${s.pct}%)` : ""}` : "";
+  };
+  void window.sro.updateState().then(showUpdate);
+  window.sro.onUpdate(showUpdate);
+  $("btn-update").addEventListener("click", async () => {
+    const btn = $("btn-update") as HTMLButtonElement;
+    btn.disabled = true;
+    if (!(await window.sro.updateInstall())) btn.disabled = false;
+  });
 
   $("btn-once").addEventListener("click", readOnce);
   $("btn-stats-reset").addEventListener("click", resetStats);

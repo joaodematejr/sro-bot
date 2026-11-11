@@ -19,7 +19,7 @@
     "srobot": "npm run build:controller && node dist/controller/cli.js",
     "build:test": "esbuild src/controller/__tests__/goals.test.ts src/controller/__tests__/statemachine.test.ts src/controller/__tests__/activities.test.ts src/controller/__tests__/login.test.ts src/controller/__tests__/tower.test.ts src/controller/__tests__/continental.test.ts src/controller/__tests__/update.test.ts src/controller/__tests__/train.test.ts src/controller/__tests__/firm.test.ts src/controller/__tests__/libstate.test.ts src/controller/__tests__/settings.test.ts src/controller/__tests__/guild.test.ts src/controller/__tests__/vpn.test.ts src/controller/__tests__/team.test.ts src/controller/__tests__/ai.test.ts src/controller/__tests__/aiactions.test.ts src/controller/__tests__/history.test.ts src/controller/__tests__/sdklogin.test.ts src/controller/__tests__/bag.test.ts src/controller/__tests__/booster.test.ts src/controller/__tests__/skills.test.ts src/controller/__tests__/sell.test.ts src/controller/__tests__/build.test.ts src/controller/__tests__/berserk.test.ts src/controller/__tests__/daily.test.ts src/controller/__tests__/expwatch.test.ts src/controller/__tests__/leveling.test.ts src/controller/__tests__/actchest.test.ts src/controller/__tests__/qigong.test.ts src/controller/__tests__/freebies.test.ts --bundle --platform=node --outdir=dist/test --format=cjs",
     "test": "npm run build:test && node --test dist/test/goals.test.js dist/test/statemachine.test.js dist/test/activities.test.js dist/test/login.test.js dist/test/tower.test.js dist/test/continental.test.js dist/test/update.test.js dist/test/train.test.js dist/test/firm.test.js dist/test/libstate.test.js dist/test/settings.test.js dist/test/guild.test.js dist/test/vpn.test.js dist/test/team.test.js dist/test/ai.test.js dist/test/aiactions.test.js dist/test/history.test.js dist/test/sdklogin.test.js dist/test/bag.test.js dist/test/booster.test.js dist/test/skills.test.js dist/test/sell.test.js dist/test/build.test.js dist/test/berserk.test.js dist/test/daily.test.js dist/test/expwatch.test.js dist/test/leveling.test.js dist/test/actchest.test.js dist/test/qigong.test.js dist/test/freebies.test.js",
-    "dist:win": "npm run build && electron-builder --win portable --x64 --publish never && node -e \"require('fs').copyFileSync('GUIA-TESTE.md','release/LEIA-ME.md')\""
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never && node -e \"require('fs').copyFileSync('GUIA-TESTE.md','release/LEIA-ME.md')\""
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.5",
@@ -57,6 +57,12 @@
     "win": {
       "target": [
         {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
           "target": "portable",
           "arch": [
             "x64"
@@ -66,9 +72,22 @@
     },
     "portable": {
       "artifactName": "SRO-Bot-${version}-portable.exe"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "joaodematejr",
+        "repo": "sro-bot"
+      }
+    ],
+    "nsis": {
+      "artifactName": "SRO-Bot-Setup-${version}.exe",
+      "oneClick": true,
+      "perMachine": false
     }
   },
   "dependencies": {
+    "electron-updater": "6.8.11",
     "sql.js": "1.15.2"
   }
 }

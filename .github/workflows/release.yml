@@ -48,11 +48,17 @@ jobs:
           ls -la release
           test -f release/win-unpacked/resources/engine/build/libsroengine.so
           test -f release/win-unpacked/resources/engine/build/libsroloader.so
+          # Auto-update: o app instalado le o latest.yml do Release, que aponta pro instalador.
+          test -f release/latest.yml
+          grep -q "SRO-Bot-Setup-" release/latest.yml
+          test -f release/resources/app-update.yml || test -f release/win-unpacked/resources/app-update.yml
       - uses: actions/upload-artifact@v7
         with:
           name: sro-bot-windows
           path: |
             app/release/*.exe
+            app/release/*.blockmap
+            app/release/latest.yml
             app/release/LEIA-ME.md
           if-no-files-found: error
       - name: Publicar o Release
@@ -63,5 +69,7 @@ jobs:
           v="${GITHUB_REF_NAME#v}"
           awk -v h="## [$v]" 'index($0, h) == 1 {f=1; next} /^## \[/ {f=0} f' ../CHANGELOG.md > notas.md
           [ -s notas.md ] || echo "Versao $v." > notas.md
-          gh release create "$GITHUB_REF_NAME" release/*.exe release/LEIA-ME.md \
+          # Instalador (se atualiza sozinho), latest.yml e blockmap (pro auto-update),
+          # o portatil e o guia.
+          gh release create "$GITHUB_REF_NAME" release/*.exe release/*.blockmap release/latest.yml release/LEIA-ME.md \
             --title "SRO Bot $v" --notes-file notas.md

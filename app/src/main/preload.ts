@@ -75,4 +75,10 @@ contextBridge.exposeInMainWorld("sro", {
   uiLog: (m: string) => ipcRenderer.send("ui:log", m),
   onLog: (cb: (msg: string) => void) =>
     ipcRenderer.on("sro:log", (_e, m: string) => cb(m)),
+  // Atualizacao pelos Releases (ver main/updater.ts).
+  appVersion: () => ipcRenderer.invoke("app:version"),
+  updateState: () => ipcRenderer.invoke("update:state"),
+  updateInstall: () => ipcRenderer.invoke("update:install"),
+  onUpdate: (cb: (s: { kind: string; version?: string; pct?: number; reason?: string }) => void) =>
+    ipcRenderer.on("update:status", (_e, s) => cb(s)),
 });

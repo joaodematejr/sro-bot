@@ -44,6 +44,7 @@ import { aiChat, type AppInfo, aiSnapshot, hasAiKey, loadAiSettings, providerMod
 import type { AiSettings, ChatMessage } from "../controller/ai";
 import { flushHistory, historySummary, initHistory, recordEvent, recordSample } from "./history";
 import type { HistEvent } from "../controller/history";
+import { setupUpdater } from "./updater";
 
 // Configuracao de caminhos (pasta do LDPlayer, instancia, adb) na pasta de dados.
 function settingsPath(): string {
@@ -325,9 +326,18 @@ ipcMain.handle("engine:loginstop", async () => {
 });
 
 // Treino completo: prepara o auto-play do jogo, liga a caca e vigia ate parar.
+ipcMain.handle("app:version", () => app.getVersion());
+
+// Treino rodando agora: antes de fechar pra atualizar, a caca do jogo e religada.
+let trainRunning = false;
 ipcMain.handle("engine:train", async (_e, cfg: TrainConfig) => {
   const push = (m: string) => win?.webContents.send("sro:log", "[treino] " + m);
-  return runTrain("127.0.0.1", HOST_PORT, cfg, push);
+  trainRunning = true;
+  try {
+    return await runTrain("127.0.0.1", HOST_PORT, cfg, push);
+  } finally {
+    trainRunning = false;
+  }
 });
 
 ipcMain.handle("engine:trainstop", async () => {
@@ -608,6 +618,17 @@ app.whenReady().then(async () => {
     console.log("historico desligado: " + String(e));
   }
   createWindow();
+  setupUpdater(
+    (s) => win?.webContents.send("update:status", s),
+    (m) => win?.webContents.send("sro:log", "[update] " + m),
+    // Fechar o app no meio de uma viagem do Treino deixaria a caca desligada: religa
+    // antes (com o char em mundo), como nas trocas de EXE feitas a mao.
+    async () => {
+      if (!trainRunning) return;
+      const p = await queryPlayer("127.0.0.1", HOST_PORT).catch(() => ({ ok: false }));
+      if (p.ok) await setAutoFight("127.0.0.1", HOST_PORT, true);
+    },
+  );
 });
 
 app.on("before-quit", () => flushHistory(true));
