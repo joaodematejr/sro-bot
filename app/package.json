@@ -22,7 +22,8 @@
     "dist:win": "npm run build && electron-builder --win portable --x64 --publish never && node -e \"require('fs').copyFileSync('GUIA-TESTE.md','release/LEIA-ME.md')\""
   },
   "devDependencies": {
-    "@types/node": "20.19.43",
+    "@tailwindcss/cli": "4.3.5",
+    "@types/node": "24.19.2",
     "electron": "45.2.3",
     "electron-builder": "26.18.0",
     "esbuild": "0.28.2",

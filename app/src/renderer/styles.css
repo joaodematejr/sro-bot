@@ -1,6 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind 4 com a configuracao JS de sempre (cores e fonte do tema escuro). */
+@import "tailwindcss";
+@config "../../tailwind.config.js";
+
+/* O Tailwind 4 tirou o cursor de mao dos botoes; o painel sempre teve. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+}
 
 @layer components {
   .panel {
