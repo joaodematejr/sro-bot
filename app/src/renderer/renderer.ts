@@ -1085,7 +1085,7 @@ interface ContinentalUiConfig {
 }
 
 const CONT_DEFAULT: ContinentalUiConfig = {
-  mapId: 1,
+  mapId: 0, // automatico: o mapa mais alto que o nivel de cada char libera
   ignoreGreen: true,
   ignoreBlue: true,
   restartWhenStuck: true,

@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   type BoxSlot,
+  continentalMapFor,
   AimTracker,
   AIM_SETTLE_MS,
   ARENA_MAX_MS,
@@ -349,4 +350,20 @@ test("no ponto: so comeca com HP de 90% ou mais e desiste fora da arena com HP a
   assert.equal(atSpotHpStop(55, false, false), "HP caiu a 55% no ponto: tabuleiro fechado, Continental fica pra depois");
   assert.equal(atSpotHpStop(20, false, true), null); // na arena luta ate o fim (perder nao custa EXP)
   assert.equal(atSpotHpStop(undefined, true, false), null);
+});
+
+test("mapa automatico: o mais alto que o nivel do char libera (Lv.87 rolava no Chinese Lv.30)", () => {
+  const auto = { ...DEFAULT_CONTINENTAL_CONFIG, mapId: 0 };
+  assert.equal(continentalMapFor(auto, 87), 6); // Asia Minor (Lv85)
+  assert.equal(continentalMapFor(auto, 90), 7); // Central Asia
+  assert.equal(continentalMapFor(auto, 60), 3); // Desert
+  assert.equal(continentalMapFor(auto, 59), 2);
+  assert.equal(continentalMapFor(auto, 0), 1); // nivel nao lido
+  assert.equal(continentalMapFor({ mapId: 3 }, 87), 3); // fixo na config
+  const sel = { board: false, selectMap: true };
+  const set = step(snap({ ...sel, mapId: 1, level: 87 }), auto);
+  assert.equal(set.kind === "act" && set.body, "callsi XSuperRiskDocument set_CurrentMapID 1 6 0");
+  // Tabuleiro do Chinese aberto com o automatico pedindo o Asia Minor: reabre pra trocar.
+  const st = step(snap({ mapId: 1, level: 87 }), auto);
+  assert.equal(st.kind === "act" && st.id, "reopen");
 });

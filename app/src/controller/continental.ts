@@ -53,7 +53,7 @@ import { type EngineQuery, SAME_ACTION_COOLDOWN_MS } from "./tower";
 import { LEAVE_DEFEND_HP_PCT, LEAVE_MIN_HP_PCT } from "./train";
 
 export interface ContinentalConfig {
-  mapId: number; // STC_REGION: 1 Chinese, 2 Hotan, 3 Desert, 4..7 (Lv75..90)
+  mapId: number; // 0 = automatico (o mais alto que o nivel do char libera); 1..7 = mapa fixo
   ignoreGreen: boolean; // CHK_GREEN
   ignoreBlue: boolean; // CHK_BLUE
   restartWhenStuck: boolean; // CHK_RESTART: "Stuck in the activity for too long => Quit the game"
@@ -68,7 +68,7 @@ export interface ContinentalConfig {
 // e CHK_BUY_ONLINE_BOX (Special Chest, pago). O "Open now" do bau tambem e pago
 // e nunca e chamado.
 export const DEFAULT_CONTINENTAL_CONFIG: ContinentalConfig = {
-  mapId: 1,
+  mapId: 0,
   ignoreGreen: true,
   ignoreBlue: true,
   restartWhenStuck: true,
@@ -76,15 +76,30 @@ export const DEFAULT_CONTINENTAL_CONFIG: ContinentalConfig = {
   stopWhenAllPurple: false,
 };
 
+// Nomes e niveis lidos no jogo em 2026-11-11 (GetMapIdByIndex:0..6, NeedLevel e
+// MapTittleName). Todos tem o mesmo tabuleiro (5 baus, ~7 "?", 3 dados, 1
+// caveira); muda o conteudo: baus proprios por mapa e cartas dos monstros da
+// regiao nos "?".
 export const CONTINENTAL_MAPS: { id: number; name: string; level: number }[] = [
   { id: 1, name: "Chinese", level: 30 },
   { id: 2, name: "Hotan", level: 45 },
   { id: 3, name: "Desert", level: 60 },
-  { id: 4, name: "Mapa 4", level: 75 },
-  { id: 5, name: "Mapa 5", level: 80 },
-  { id: 6, name: "Mapa 6", level: 85 },
-  { id: 7, name: "Mapa 7", level: 90 },
+  { id: 4, name: "Roc Mountain", level: 75 },
+  { id: 5, name: "Eastern Europe", level: 80 },
+  { id: 6, name: "Asia Minor", level: 85 },
+  { id: 7, name: "Central Asia", level: 90 },
 ];
+
+export const CONTINENTAL_AUTO_MAP = 0;
+
+// Mapa da sessao: o fixo da config ou, no automatico, o mais alto que o nivel
+// do char libera (o char Lv.87 rolava no Chinese Lv.30 com a config antiga).
+// Nivel nao lido: o primeiro mapa (liberado pra todo char que chega no Continental).
+export function continentalMapFor(cfg: Pick<ContinentalConfig, "mapId">, level: number): number {
+  if (cfg.mapId !== CONTINENTAL_AUTO_MAP) return cfg.mapId;
+  const open = CONTINENTAL_MAPS.filter((m) => level >= m.level);
+  return open.length ? open[open.length - 1].id : CONTINENTAL_MAPS[0].id;
+}
 
 export const BOX_LOCKED = 1;
 export const BOX_UNLOCKING = 2;
@@ -169,6 +184,7 @@ export interface ContinentalSnapshot {
   sleeping: boolean;
   summary: boolean;
   mapId: number;
+  level: number; // nivel do char (CONN; 0 = nao lido), pro mapa automatico
   maxDice: number; // -1 = nao veio (mapa nao carregado, ou 0 dados desde o boot)
   grids: number; // casas do tabuleiro recebidas (32 com o mapa carregado)
   dice: number;
@@ -219,7 +235,7 @@ export class AimTracker {
 export function emptyContinentalSnapshot(): ContinentalSnapshot {
   return {
     inWorld: false, dialog: false, board: false, selectMap: false, itemAccess: false, sleeping: false, summary: false,
-    mapId: -1, maxDice: -1, grids: 0,
+    mapId: -1, level: 0, maxDice: -1, grids: 0,
     dice: 0, gameState: -1, slots: [], reward: "", scene: -1,
   };
 }
@@ -414,10 +430,11 @@ export function nextContinentalStep(
   if (p.closeSent) return s.dialog ? act("close", "fechar o dialogo", `calls ${DLG} SetVisible 2 0 1`, 3000) : finish(p.doneReason);
   // Logo depois de fechar outra janela o SetVisible pode nao pegar: repete.
   if (!s.dialog) return act("open", "abrir o dialogo", `calls ${DLG} SetVisible 2 1 1`, 3000);
+  const map = continentalMapFor(cfg, s.level);
   if (s.selectMap) {
-    if (s.mapId !== cfg.mapId)
-      return act("setmap", `escolher o mapa ${mapName(cfg.mapId)}`, `callsi ${DOC} set_CurrentMapID 1 ${cfg.mapId} 0`, 3000);
-    return act("show", `abrir o tabuleiro ${mapName(cfg.mapId)}`, `calls ${DLG} ShowGameMap 0`, 4000);
+    if (s.mapId !== map)
+      return act("setmap", `escolher o mapa ${mapName(map)}`, `callsi ${DOC} set_CurrentMapID 1 ${map} 0`, 3000);
+    return act("show", `abrir o tabuleiro ${mapName(map)}`, `calls ${DLG} ShowGameMap 0`, 4000);
   }
   if (!s.board) return { kind: "wait", reason: "abrindo o dialogo" };
   if (!mapLoaded(s)) {
@@ -426,10 +443,10 @@ export function nextContinentalStep(
     return { kind: "fail", reason: "dados do mapa nao chegaram" };
   }
   // Tabuleiro de outro mapa: so a selecao troca, entao fecha e reabre.
-  if (s.mapId !== cfg.mapId) {
+  if (s.mapId !== map) {
     if (p.reopens < MAX_REOPENS)
-      return act("reopen", `reabrir pra trocar do mapa ${mapName(s.mapId)} pro ${mapName(cfg.mapId)}`, `calls ${DLG} SetVisible 2 0 1`);
-    return { kind: "fail", reason: `nao trocou pro mapa ${mapName(cfg.mapId)}` };
+      return act("reopen", `reabrir pra trocar do mapa ${mapName(s.mapId)} pro ${mapName(map)}`, `calls ${DLG} SetVisible 2 0 1`);
+    return { kind: "fail", reason: `nao trocou pro mapa ${mapName(map)}` };
   }
   if (s.gameState !== STATE_READY_TO_MOVE) {
     if (p.busyMs >= STUCK_MS) return { kind: "fail", reason: `travado no estado ${s.gameState} do tabuleiro` };
@@ -574,6 +591,7 @@ export async function readContinentalSnapshot(q: EngineQuery): Promise<Continent
   if (!player) return null;
   s.inWorld = player.ok === true;
   if (!s.inWorld) return s;
+  if (typeof player.level === "number") s.level = player.level;
   const int = async (body: string, dflt: number) => {
     const r = await q("GETP", body);
     return r.ok === true && typeof r.int === "number" ? r.int : dflt;

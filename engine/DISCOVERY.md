@@ -277,9 +277,23 @@ Acoes provadas (por metodo, sem tap):
   outro: fechar (`calls SuperRiskDlg SetVisible 2 0 1`) e reabrir antes.
 - Mapas (`GetMapIdByIndex:0..6` = 1..7; `GetCurrentMapData` traz `NeedLevel` e a
   chave do nome; o nome traduzido sai no `_GameHandler m_mapTittleLab GetText`):
-  1 Chinese (Lv30), 2 Hotan (Lv45), 3 Desert (Lv60), 4..7 Lv75/80/85/90 (nome
-  nao visto, char lv60). Dados e baus sao compartilhados entre mapas; a posicao e
-  por mapa.
+  1 Chinese (Lv30), 2 Hotan (Lv45), 3 Desert (Lv60), 4 Roc Mountain (Lv75),
+  5 Eastern Europe (Lv80), 6 Asia Minor (Lv85), 7 Central Asia (Lv90). Dados e
+  baus sao compartilhados entre mapas; a posicao e por mapa.
+- Nome sem abrir o tabuleiro: `GetMapIdByIndex:<i> MapTittleName` e a chave, e
+  `Localization Localize:"<chave>"` traduz. `GetMapIdByIndex:<i> BoxPreview` e a
+  previa dos baus do mapa.
+- Levantamento de 2026-11-11 (char Lv.87, abrindo os 6 mapas liberados pela
+  selecao, sem rolar): todos tem o mesmo tabuleiro, 5 baus (2 Bronze, 1 Silver,
+  1 Golden, 1 Diamond), ~7 "?", 3 dados extras e 1 caveira. Muda o conteudo: cada
+  mapa tem os proprios baus (Chinese 200..203, Hotan 204..207, Desert 350..353,
+  Roc Mountain 563..566, Eastern Europe 6168..6171, Asia Minor 6172..6175) e os
+  "?" dao cartas dos monstros da regiao (ex.: Pirate e Dark Wolf no Asia Minor),
+  alem de Card Fragment, Recast Stone e Grinding Stone. A descricao dos baus nao
+  diz o conteudo ("cards or special items").
+- `RpcC2G_GetRiskMapInfos` responde com uma lista de mapas, mas o cliente so
+  guarda o pedido (`OnGetMapDynamicInfo` filtra por `mapID`): pra ver outro
+  mapa, abrir o tabuleiro dele.
 - Modo sono (`XSleepModeUI`) liga sozinho com o jogo parado; sair igual a torre.
 
 ### Mirar o dado e casa caveira (2026-11-06, 47 rolagens em 4 chars)
