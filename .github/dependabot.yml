@@ -10,8 +10,9 @@ updates:
       menores:
         update-types: [minor, patch]
     ignore:
-      # Os tipos acompanham o Node do Electron (Electron 31 = Node 20). Tipo de
-      # Node mais novo deixaria o tsc aceitar API que nao existe no app.
+      # Os tipos acompanham o Node do Electron (Electron 45 = Node 24); ao subir
+      # o Electron, subir o @types/node a mao. Tipo de Node mais novo deixaria o
+      # tsc aceitar API que nao existe no app.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
     commit-message:
