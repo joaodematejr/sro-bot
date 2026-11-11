@@ -4,8 +4,33 @@
 // o aviso. Confere ao abrir e a cada CHECK_EVERY_MS e baixa sozinho, mas so instala
 // quando o usuario clica: cada troca de versao tem o ok dele.
 
+import fs from "node:fs";
+import path from "node:path";
+
 import { app, ipcMain } from "electron";
 import { autoUpdater } from "electron-updater";
+
+// O que estava ligado quando o usuario clicou em Atualizar: o app novo, ao abrir,
+// reabre o jogo (so reconecta) e religa o bot. Vale por RESUME_MAX_MS, pra nao
+// religar numa abertura qualquer mais tarde.
+export interface UpdateResume {
+  game: boolean;
+  bot: boolean;
+}
+const RESUME_MAX_MS = 10 * 60 * 1000;
+const resumeFile = () => path.join(app.getPath("userData"), "update-resume.json");
+
+// Le e apaga o aviso (uma vez so). null = nada a retomar.
+export function takeUpdateResume(now = Date.now()): UpdateResume | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(resumeFile(), "utf8")) as Partial<UpdateResume> & { at?: number };
+    fs.rmSync(resumeFile(), { force: true });
+    if (typeof raw.at !== "number" || now - raw.at > RESUME_MAX_MS || now < raw.at) return null;
+    return { game: raw.game === true, bot: raw.bot === true };
+  } catch {
+    return null;
+  }
+}
 
 export type UpdateState =
   | { kind: "off"; reason: string }
@@ -29,9 +54,15 @@ export function setupUpdater(send: Send, log: Log, beforeInstall: () => Promise<
     send(s);
   };
   ipcMain.handle("update:state", () => state);
-  ipcMain.handle("update:install", async () => {
+  ipcMain.handle("update:resume", () => takeUpdateResume());
+  ipcMain.handle("update:install", async (_e, resume?: UpdateResume) => {
     if (state.kind !== "ready") return false;
-    log(`instalando a versao ${state.version}; o app reabre sozinho.`);
+    log(`instalando a versao ${state.version}; o app reabre sozinho${resume?.bot ? " e religa o bot" : ""}.`);
+    try {
+      fs.writeFileSync(resumeFile(), JSON.stringify({ game: resume?.game === true, bot: resume?.bot === true, at: Date.now() }));
+    } catch {
+      /* sem disco: o usuario religa a mao */
+    }
     await beforeInstall().catch(() => undefined);
     // isSilent: sem as telas do instalador; isForceRunAfter: reabre o app no fim.
     setImmediate(() => autoUpdater.quitAndInstall(true, true));

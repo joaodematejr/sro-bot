@@ -78,7 +78,8 @@ contextBridge.exposeInMainWorld("sro", {
   // Atualizacao pelos Releases (ver main/updater.ts).
   appVersion: () => ipcRenderer.invoke("app:version"),
   updateState: () => ipcRenderer.invoke("update:state"),
-  updateInstall: () => ipcRenderer.invoke("update:install"),
+  updateInstall: (resume: { game: boolean; bot: boolean }) => ipcRenderer.invoke("update:install", resume),
+  updateResume: () => ipcRenderer.invoke("update:resume"),
   onUpdate: (cb: (s: { kind: string; version?: string; pct?: number; reason?: string }) => void) =>
     ipcRenderer.on("update:status", (_e, s) => cb(s)),
 });

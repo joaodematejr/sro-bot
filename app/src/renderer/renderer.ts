@@ -107,7 +107,8 @@ declare global {
       onLog: (cb: (msg: string) => void) => void;
       appVersion: () => Promise<string>;
       updateState: () => Promise<UpdateUiState>;
-      updateInstall: () => Promise<boolean>;
+      updateInstall: (resume: { game: boolean; bot: boolean }) => Promise<boolean>;
+      updateResume: () => Promise<{ game: boolean; bot: boolean } | null>;
       onUpdate: (cb: (s: UpdateUiState) => void) => void;
     };
   }
@@ -2282,7 +2283,23 @@ function wire(): void {
   $("btn-update").addEventListener("click", async () => {
     const btn = $("btn-update") as HTMLButtonElement;
     btn.disabled = true;
-    if (!(await window.sro.updateInstall())) btn.disabled = false;
+    // O app novo abre o jogo (so reconecta) e religa o bot se estavam ligados.
+    if (!(await window.sro.updateInstall({ game: gameOpen, bot: polling }))) btn.disabled = false;
+  });
+
+  // Acabou de atualizar: volta como estava (Abrir jogo so reconecta com o char em
+  // mundo; Iniciar bot so depois do jogo aberto).
+  void window.sro.updateResume().then(async (r) => {
+    if (!r || (!r.game && !r.bot)) return;
+    log(`atualizado para ${$("app-version").textContent || "a versao nova"}: ${r.bot ? "reabrindo o jogo e religando o bot" : "reabrindo o jogo"}.`);
+    if (!gameOpen) ($("btn-game") as HTMLButtonElement).click();
+    const t0 = Date.now();
+    while (!gameOpen && Date.now() - t0 < 180000) await new Promise((res) => setTimeout(res, 1000));
+    if (!gameOpen) {
+      log("o jogo nao abriu depois da atualizacao; abra e inicie o bot a mao.");
+      return;
+    }
+    if (r.bot && !polling) ($("btn-bot") as HTMLButtonElement).click();
   });
 
   $("btn-once").addEventListener("click", readOnce);
