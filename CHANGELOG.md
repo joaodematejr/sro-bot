@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** o card "Gratis do dia" pega o premio diario do cartao de privilegio (Silver, Golden ou Premium Card) no Premium Shop > Privilege: so com a loja fechada, abre a aba, aperta o Claim por metodo, confirma pelo servidor e fecha. O dia do premio vira as 05:00 do servidor. Diamond nao pode mudar e Silk nao pode cair.
+- **Engine:** comando `callxm`, o `callx` com os caminhos resolvidos na thread principal (pra chegar em botao de tela por `Find`/`GetComponent`); no meio de um caminho, `Metodo:"texto"` passa a mandar texto de verdade e escolhe a versao do metodo com parametro `string`. Antes o texto virava `0` e prendeu o engine.
 - **App:** Continental com mapa "Automatico": cada char rola no mapa mais alto que o nivel dele libera (Lv.87 no Asia Minor, Lv.60 no Desert), tambem no ciclo entre chars. Vem como padrao numa instalacao nova; os mapas 4 a 7 ganharam o nome real (Roc Mountain, Eastern Europe, Asia Minor, Central Asia).
 
 - **Dev:** TypeScript 7 (`tsconfig` com `moduleResolution: bundler`), esbuild 0.28 e sql.js 1.15 (SQLite 3.54). O canal do engine aceita o `data` do socket como texto ou Buffer. Sem mudanca de comportamento no app.

@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { test } from "node:test";
 
-import { type FreebiesSnapshot, luckyMoneyWindow, nextFreebieStep } from "../freebies";
+import { type FreebiesSnapshot, luckyMoneyWindow, nextFreebieStep, payCardDay, payCardsToClaim } from "../freebies";
 
 // Estado real em 2026-11-10 07:2x: 202 diario 0/1 gratis, 303 semanal e 401 mensal
 // pegos, o resto pago; attendance de hoje pendente com 3 dias; caixinha liberada.
@@ -142,4 +142,20 @@ test("gratis: doar no Support so com a opcao ligada, a outros membros, sem item 
   assert.equal(s9.kind === "act" && s9.body, "callx XGuildDonateDocument SendDonateMemberItem 3 -- u:14 u:1 n:");
   assert.equal(nextFreebieStep(snap({ ...base, donatedToday: 10 }), new Set(), false, true).kind, "done");
   assert.equal(nextFreebieStep(snap({ ...base, donatedToday: undefined }), new Set(), false, true).kind, "done");
+});
+
+test("cartao de privilegio: o dia do premio vira as 05:00 do servidor (21:00 UTC no fuso 8)", () => {
+  const antes = Date.UTC(2026, 10, 11, 20, 59, 59);
+  const depois = Date.UTC(2026, 10, 11, 21, 0, 0);
+  assert.equal(payCardDay(depois, 8) - payCardDay(antes, 8), 1);
+  assert.equal(payCardDay(Date.UTC(2026, 10, 11, 18, 22), 8), 20768); // lido ao vivo em 2026-11-11
+});
+
+test("cartao de privilegio: so ativo e sem o premio de hoje (valores de 2026-11-11)", () => {
+  const now = Date.UTC(2026, 10, 11, 18, 22);
+  const premium = { id: 3, expire: 1796840425, lastFetch: 20698 };
+  const silverVencido = { id: 1, expire: 1730041499, lastFetch: 20023 };
+  assert.deepEqual(payCardsToClaim([silverVencido, premium], now, 8), [premium]);
+  assert.deepEqual(payCardsToClaim([{ ...premium, lastFetch: 20768 }], now, 8), []);
+  assert.deepEqual(payCardsToClaim([{ id: 9, expire: 1796840425, lastFetch: 0 }], now, 8), []); // id fora da tabela
 });

@@ -490,6 +490,32 @@ Injetar o engine (ver README), deixar na tela de titulo, e puxar
 `/data/data/com.silkroad.mb/files/sro_dump.txt`. O engine espera o XMainClient
 carregar antes de despejar.
 
+## Cartoes de privilegio (Premium Shop > Privilege), 2026-11-11
+
+- Tabela `XWelfareDocument get_PayMemberTable Table` (array: `GetValue:i`): 1
+  Silver Card, 2 Golden Card, 3 Premium Card, 28 dias cada (`Name` e chave:
+  `Localization Localize:"PayMember_Name_3"` = "Premium Card - 4 weeks").
+- Cartoes da conta: `XWelfareDocument _payMemberInfo` (List<PayMemberRecord>);
+  campos `Nullable`, ler pelo getter: `get_id`, `get_expiretime` (s),
+  `get_begintime`, `get_lastfetchdailyreward` (dia). Pedir antes:
+  `calls XWelfareDocument ReqPayAllInfo 0`.
+- Ativo: `expiretime - agora > 1` (`CheckMemberPrivilegeType`). Premio de hoje por
+  pegar: `lastfetchdailyreward != floor((agora_ms + (fuso*3600 - 18000)*1000) /
+  86400000)` (`CheckPayMemberChest`): vira as 05:00 do servidor. Fuso:
+  `XServerTimeMgr get_ServerTimeZone` (8).
+- O Premium Card da: +100% de EXP, +5% HP/MP/dano absorvido/ataque/aprimoramento,
+  training time x10 +2 h por dia, +4 dados do Continental por dia, +2 respawns e
+  +2 refresh da loja por dia, e o premio diario (3 itens; um parece Silk x20).
+- Premio diario: so pelo botao do bau da aba, `XWelfareKingdomPrivilegeHandler.OnChestClick
+  (IXUISprite)`, que manda `RpcC2G_FetchPayMemberReward` com o ID do botao (= indice
+  da aba = id do cartao). Sem metodo de documento pra isso. Abrir a aba:
+  `callsi XPremiumShopDlg ShowWorkGameSystem 1 568 0`; com ela aberta o handler fica
+  em `XWelfareDocument _payMemberPrivilegeHandler` (`_curTableIdx` = cartao mostrado).
+  O botao so se alcanca por metodo da Unity (`m_AfterBuy` Find:"Chest" GetComponent:
+  "XUISprite"): usar `callxm` (thread principal). O mesmo caminho por `GETP`
+  (thread do socket, e na epoca o texto no meio do caminho ainda virava `0`)
+  prendeu o engine ate reiniciar o jogo. Depois do premio o jogo mostra o `RewardDlg`.
+
 ## Guild utilities (2026-11-07, char principal no servidor principal)
 
 - Na guilda: `XGuildDocument get_bInGuild` (vem false nos primeiros segundos depois

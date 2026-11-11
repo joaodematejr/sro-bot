@@ -110,6 +110,61 @@ export function luckyMoneyWindow(now: number): boolean {
 export const DIAMOND_BODY = "XBagDocument GetVirtualItemCount:9";
 export const SILK_BODY = "XBagDocument GetVirtualItemCount:7";
 
+// Cartoes de privilegio (Premium Shop > Privilege), lidos no XMainClient.dll e ao
+// vivo em 2026-11-11: XWelfareDocument _payMemberInfo (PayMemberRecord: get_id,
+// get_expiretime em s, get_lastfetchdailyreward = dia do ultimo premio diario) e a
+// PayMemberTable (1 Silver, 2 Golden, 3 Premium Card, 28 dias cada). O premio diario
+// so sai pelo botao do bau da aba (XWelfareKingdomPrivilegeHandler.OnChestClick, que
+// manda o FetchPayMemberReward com o ID do botao): o bot abre a aba e chama o
+// handler pelo callxm, que acha o botao na thread principal do jogo.
+export interface PayCard {
+  id: number;
+  expire: number; // s
+  lastFetch: number; // dia (ver payCardDay)
+}
+export const PAY_CARD_NAMES: Record<number, string> = { 1: "Silver Card", 2: "Golden Card", 3: "Premium Card" };
+export const PAY_CARDS_INFO_BODY = "calls XWelfareDocument ReqPayAllInfo 0";
+// Aba Privilege do Premium Shop (XSys_Welfare_KingdomPrivilege_Court = 568).
+export const PAY_SHOP_OPEN_BODY = "callsi XPremiumShopDlg ShowWorkGameSystem 1 568 0";
+export const PAY_SHOP_CLOSE_BODY = "calls XPremiumShopDlg SetVisible 2 0 1";
+export const PAY_CLAIM_BODY =
+  'callxm XWelfareDocument _payMemberPrivilegeHandler OnChestClick 1 -- o:XWelfareDocument|_payMemberPrivilegeHandler|m_AfterBuy|Find:"Chest"|GetComponent:"XUISprite"';
+// Depois do premio o jogo mostra os itens no RewardDlg.
+export const REWARD_CLOSE_BODY = "calls RewardDlg SetVisible 2 0 1";
+
+// Dia do premio diario do cartao, como o XWelfareDocument.CheckPayMemberChest: vira
+// as 05:00 do servidor (o fuso vem do XServerTimeMgr, 8 no servidor do usuario).
+export function payCardDay(nowMs: number, tzHours: number): number {
+  return Math.floor((nowMs + (tzHours * 3600 - 18000) * 1000) / 86400000);
+}
+
+// Cartoes ativos (vencem em mais de 1 s, como o CheckMemberPrivilegeType) com o premio
+// de hoje por pegar. Cartao vencido nao tem premio.
+export function payCardsToClaim(cards: PayCard[], nowMs: number, tzHours: number): PayCard[] {
+  const day = payCardDay(nowMs, tzHours);
+  const nowS = Math.floor(nowMs / 1000);
+  return cards.filter((c) => PAY_CARD_NAMES[c.id] && c.expire - nowS > 1 && c.lastFetch !== day);
+}
+
+export async function readPayCards(q: EngineQuery): Promise<{ cards: PayCard[]; tz?: number }> {
+  const int = async (body: string) => {
+    const r = await q("GETP", body);
+    return r.ok === true && typeof r.int === "number" ? r.int : undefined;
+  };
+  const L = "XWelfareDocument _payMemberInfo";
+  const n = (await int(`${L} get_Count`)) ?? 0;
+  const cards: PayCard[] = [];
+  for (let i = 0; i < Math.min(n, 10); i++) {
+    const id = await int(`${L} get_Item:${i} get_id`);
+    const expire = await int(`${L} get_Item:${i} get_expiretime`);
+    const lastFetch = await int(`${L} get_Item:${i} get_lastfetchdailyreward`);
+    if (id === undefined || expire === undefined || lastFetch === undefined) continue;
+    // O GETP le 32 bits com sinal: a data em s passa de 2^31 em 2038, nao antes.
+    cards.push({ id, expire: expire >>> 0, lastFetch });
+  }
+  return { cards, tz: await int("XServerTimeMgr get_ServerTimeZone") };
+}
+
 // Um pedido por vez; cada um so uma vez por passada (`tried`). `checkedToday`: o
 // attendance ja foi pego neste dia do jogo pelo app (trava a mais contra o re-sign
 // pago, mesmo se a leitura vier velha).
