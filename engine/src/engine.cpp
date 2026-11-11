@@ -77,6 +77,11 @@ struct Action {
     uint64_t xval[8];
     void* xobj[8];
     char xstr[8][32];
+    // method 14 (callxm): como o 13, mas os caminhos (do objeto e dos args 'o')
+    // ficam em texto e sao resolvidos na thread principal, onde metodo da Unity
+    // (Transform.Find, GetComponent) pode rodar.
+    char xm_path[192];
+    char xm_opath[8][160];
 };
 std::mutex g_queue_mu;
 std::vector<Action> g_queue;
@@ -1183,6 +1188,10 @@ void exec_move_main(float x, float y, float z) {
 //   1 = _attr.set_AutoPlayOn(a1)       (flag de estado "auto ligado")
 //   2 = _ai.SendAutoFightMsg(a1)       (so notifica o servidor)
 //   3 = _ai.SendEnterFightEvent()      (sem args)
+// Definidas mais abaixo (o callxm resolve caminho aqui na thread principal).
+std::string walk_path(const std::vector<std::string>& path, size_t end, void*& obj);
+std::vector<std::string> split_words(const std::string& body);
+
 // Roda na thread principal (chamado pelo hook), igual ao move.
 void exec_auto_main(const Action& act) {
     int method = act.method;
@@ -1191,7 +1200,7 @@ void exec_auto_main(const Action& act) {
     // Metodos 7/8/9/10 (calls/callsn/callsi/callp, ex.: login) nao dependem do
     // jogador: rodam pre-mundo. Os demais (0-6, auto-hunt) precisam do player.
     if (!player && method != 7 && method != 8 && method != 9 && method != 10 && method != 11 && method != 12 &&
-        method != 13) return;
+        method != 13 && method != 14) return;
     if (!g_api.object_get_class || !g_api.class_get_method_from_name || !g_api.runtime_invoke)
         return;
     uint8_t b1 = a1 ? 1 : 0, b2 = a2 ? 1 : 0;
@@ -1299,6 +1308,39 @@ void exec_auto_main(const Action& act) {
         g_api.runtime_invoke(act.mi, act.obj, act.argc > 0 ? p : nullptr, &exc);
         LOG("exec callp %s.%s(%d nulos) obj=%p exc=%s", act.cls, act.name, act.argc, act.obj,
             exc ? "sim" : "nao");
+        return;
+    }
+
+    // method 14 = callxm: o callx com os caminhos resolvidos aqui, na thread
+    // principal. Serve pra objeto que so se alcanca por metodo da Unity (botao
+    // de tela: Transform Find:"Chest" GetComponent:"XUISprite"), que na thread
+    // do socket nao pode rodar. O g_read_mu serializa com as leituras do socket
+    // (o walk_path usa o FaultGuard). Resolvido, segue como callx (method 13).
+    if (method == 14) {
+        Action a = act;
+        {
+            std::lock_guard<std::mutex> lk(g_read_mu);
+            std::vector<std::string> w = split_words(a.xm_path);
+            if (w.empty()) { LOGE("callxm: sem caminho"); return; }
+            std::string err = walk_path(w, w.size(), a.obj);
+            if (!err.empty() || !plausible_obj(a.obj)) { LOGE("callxm: caminho %s: %s", a.xm_path, err.c_str()); return; }
+            a.mi = g_api.class_get_method_from_name(g_api.object_get_class(a.obj), a.name, a.argc);
+            if (!a.mi) { LOGE("callxm: metodo %s nao achado", a.name); return; }
+            int n = a.argc < 0 ? 0 : (a.argc > 8 ? 8 : a.argc);
+            for (int i = 0; i < n; i++) {
+                if (a.xkind[i] != 'o') continue;
+                std::vector<std::string> op;
+                std::string v = a.xm_opath[i];
+                size_t st = 0;
+                for (size_t j = 0; j <= v.size(); j++)
+                    if (j == v.size() || v[j] == '|') { if (j > st) op.push_back(v.substr(st, j - st)); st = j + 1; }
+                std::string e2 = op.empty() ? std::string("sem caminho") : walk_path(op, op.size(), a.xobj[i]);
+                if (!e2.empty() || !plausible_obj(a.xobj[i])) { LOGE("callxm: arg %d %s: %s", i, a.xm_opath[i], e2.c_str()); return; }
+            }
+        }
+        // Invoca fora do g_read_mu (o metodo do jogo pode demorar).
+        a.method = 13;
+        exec_auto_main(a);
         return;
     }
 
@@ -1806,6 +1848,28 @@ std::vector<std::string> split_words(const std::string& body) {
     return out;
 }
 
+// Metodo de 1 parametro System.String com esse nome, subindo pelas classes base.
+// Component.GetComponent tem a versao (Type) e a (string) com 1 arg: a busca so
+// por nome e numero de args pegava qualquer uma e mandava texto pra um Type.
+const void* find_method_str1(void* klass, const char* name) {
+    if (!g_api.class_get_methods || !g_api.method_get_name || !g_api.method_get_param_count ||
+        !g_api.method_get_param || !g_api.type_get_name)
+        return nullptr;
+    for (void* k = klass; k; k = g_api.class_get_parent ? (void*)g_api.class_get_parent(k) : nullptr) {
+        void* iter = nullptr;
+        for (const void* m = g_api.class_get_methods(k, &iter); m; m = g_api.class_get_methods(k, &iter)) {
+            const char* mn = g_api.method_get_name(m);
+            if (!mn || std::strcmp(mn, name) != 0 || g_api.method_get_param_count(m) != 1) continue;
+            const void* t = g_api.method_get_param(m, 0);
+            char* tn = t ? g_api.type_get_name(t) : nullptr;
+            bool ok = tn && std::strcmp(tn, "System.String") == 0;
+            if (tn && g_api.free_mem) g_api.free_mem(tn);
+            if (ok) return m;
+        }
+    }
+    return nullptr;
+}
+
 // Resolve o singleton de path[0] e segue path[1..end): cada passo e um campo
 // (ponteiro) ou, sem campo com esse nome, um metodo de 0 args que devolve
 // objeto (ex.: XLoginDocument.GetLastRegionInfo). Devolve "" e o objeto em obj,
@@ -1820,19 +1884,32 @@ std::string walk_path(const std::vector<std::string>& path, size_t end, void*& o
         // GetServerData:108). Sem ":" = campo ou metodo de 0 args.
         // "Metodo:a,b[,c]" = 2 ou 3 args int32 tambem no meio do caminho (ex.:
         // XSkillEffectMgr GetSkillConfig:<skill>,<nivel> SkillScript).
+        // "Metodo:"texto"" = 1 arg string (ex.: Transform Find:"Chest"). Antes o
+        // texto virava atoi = 0 e ia como ponteiro pro metodo nativo: em
+        // 2026-11-11 15:24 isso prendeu o engine ate reiniciar o jogo.
         std::string name = path[i];
         bool has_arg = false;
         int32_t arg = 0;
         int32_t margs[3] = {0, 0, 0};
         int argc = 0;
+        void* str_arg = nullptr;
         size_t colon = name.find(':');
         if (colon != std::string::npos) {
             const char* p = name.c_str() + colon + 1;
-            arg = (int32_t)std::atoi(p);
-            margs[0] = arg;
-            argc = 1;
-            for (const char* c = std::strchr(p, ','); c && argc < 3; c = std::strchr(c + 1, ','))
-                margs[argc++] = (int32_t)std::atoi(c + 1);
+            if (*p == '"') {
+                std::string txt(p + 1);
+                if (!txt.empty() && txt.back() == '"') txt.pop_back();
+                if (!g_api.string_new) return "{\"ok\":false,\"erro\":\"sem il2cpp_string_new\"}";
+                str_arg = g_api.string_new(txt.c_str());
+                if (!str_arg) return "{\"ok\":false,\"erro\":\"texto nao criado: " + path[i] + "\"}";
+                argc = 1;
+            } else {
+                arg = (int32_t)std::atoi(p);
+                margs[0] = arg;
+                argc = 1;
+                for (const char* c = std::strchr(p, ','); c && argc < 3; c = std::strchr(c + 1, ','))
+                    margs[argc++] = (int32_t)std::atoi(c + 1);
+            }
             name.resize(colon);
             has_arg = true;
         }
@@ -1875,10 +1952,12 @@ std::string walk_path(const std::vector<std::string>& path, size_t end, void*& o
             }
         }
         if (!fi && cls) {
-            const void* m = g_api.class_get_method_from_name(cls, name.c_str(), argc);
+            const void* m = str_arg ? find_method_str1(cls, name.c_str())
+                                    : g_api.class_get_method_from_name(cls, name.c_str(), argc);
             if (!m) return "{\"ok\":false,\"erro\":\"campo nao achado: " + path[i] + "\"}";
             void* exc = nullptr;
-            void* args[3] = {&margs[0], &margs[1], &margs[2]};
+            // String e tipo de referencia: vai o proprio objeto, nao o endereco dele.
+            void* args[3] = {str_arg ? str_arg : (void*)&margs[0], &margs[1], &margs[2]};
             sub = g_api.runtime_invoke(m, obj, has_arg ? args : nullptr, &exc);
             if (exc) return "{\"ok\":false,\"erro\":\"excecao em " + path[i] + "\"}";
         }
@@ -2331,6 +2410,53 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
         // callx <Classe> [campo...] <metodo> <argc> -- <arg>...: como o callp, com args
         // tipados (ver method 13). Objeto por caminho usa | no lugar do espaco:
         // o:XBagDocument|ItemBag|Items|get_Item:5. Texto sem espaco: s:abc (s: = "").
+        // callxm: mesma sintaxe do callx, mas nada e resolvido aqui. Os caminhos
+        // vao em texto pra thread principal (method 14), que resolve e invoca. A
+        // resposta so confirma a fila: erro de caminho sai no logcat (SROENGINE),
+        // e quem chama confere o efeito no estado do jogo.
+        if (body.rfind("callxm ", 0) == 0) {
+            std::vector<std::string> all = split_words(body.substr(7));
+            auto sep = std::find(all.begin(), all.end(), std::string("--"));
+            std::vector<std::string> w(all.begin(), sep);
+            std::vector<std::string> args;
+            if (sep != all.end()) args.assign(sep + 1, all.end());
+            if (w.size() < 3) return "{\"ok\":false,\"erro\":\"uso: callxm Classe [campo...] metodo argc -- args\"}";
+            int argc = std::atoi(w.back().c_str());
+            w.pop_back();
+            if (argc < 0 || argc > 8 || (int)args.size() != argc)
+                return "{\"ok\":false,\"erro\":\"argc 0..8 e igual ao numero de args\"}";
+            const std::string nm = w.back();
+            w.pop_back();
+            Action act{};
+            act.type = 2; act.method = 14; act.argc = argc;
+            std::string path;
+            for (const std::string& s : w) path += (path.empty() ? "" : " ") + s;
+            if (path.size() >= sizeof(act.xm_path)) return "{\"ok\":false,\"erro\":\"caminho longo demais\"}";
+            std::strncpy(act.xm_path, path.c_str(), sizeof(act.xm_path) - 1);
+            for (int i = 0; i < argc; i++) {
+                const std::string& a = args[i];
+                char k = a.empty() ? 'n' : a[0];
+                std::string v = a.size() > 2 ? a.substr(2) : "";
+                act.xkind[i] = k;
+                if (k == 'i' || k == 'u' || k == 'b') act.xval[i] = (uint64_t)std::strtoll(v.c_str(), nullptr, 10);
+                else if (k == 'q') act.xval[i] = std::strtoull(v.c_str(), nullptr, 10);
+                else if (k == 's') std::strncpy(act.xstr[i], v.c_str(), sizeof(act.xstr[i]) - 1);
+                else if (k == 'o') {
+                    if (v.empty() || v.size() >= sizeof(act.xm_opath[i])) return "{\"ok\":false,\"erro\":\"o: caminho vazio ou longo demais\"}";
+                    std::strncpy(act.xm_opath[i], v.c_str(), sizeof(act.xm_opath[i]) - 1);
+                } else if (k != 'n') return "{\"ok\":false,\"erro\":\"tipo de arg: i u q b n s o\"}";
+            }
+            std::strncpy(act.name, nm.c_str(), sizeof(act.name) - 1);
+            std::strncpy(act.cls, w[0].c_str(), sizeof(act.cls) - 1);
+            {
+                std::lock_guard<std::mutex> lk(g_queue_mu);
+                g_queue.push_back(act);
+                g_has_actions = true;
+            }
+            char buf[128];
+            std::snprintf(buf, sizeof(buf), "{\"ok\":true,\"callxm\":\"%s\",\"argc\":%d}", nm.c_str(), argc);
+            return buf;
+        }
         if (body.rfind("callx ", 0) == 0) {
             std::vector<std::string> all = split_words(body.substr(6));
             auto sep = std::find(all.begin(), all.end(), std::string("--"));

@@ -46,7 +46,13 @@ XStringTable GetString:"ERR_ROLE_IN_COMBAT_STATUS"
 - Primeiro a classe. O engine acha o singleton ou o documento do jogo com esse
   nome.
 - Cada passo pode ser um campo, um getter sem argumento ou um método com
-  argumentos inteiros ou texto (`Metodo:1,0`, `Metodo:"chave"`).
+  argumentos inteiros (`Metodo:1,0`) ou com um texto (`Metodo:"chave"`). Com
+  texto, o engine escolhe a versão do método cujo parâmetro é `string`.
+- **Métodos da Unity** (`Find`, `GetComponent`, `gameObject` e outros, de
+  `Transform`, `GameObject` ou `Component`) não podem rodar no `GETP` nem no
+  `callx`: os dois resolvem o caminho na thread do socket, e isso já deixou o
+  engine preso até reiniciar o jogo. Para chegar num objeto de tela, use o
+  `callxm`.
 - `campo+N` lê N bytes depois do campo, por exemplo o valor de um `Nullable<T>`
   ou o z de um `Vector3`.
 - `[#n]` lê o elemento n de um array de int. `[#n:w:k]` lê o int k do elemento
@@ -71,6 +77,7 @@ Rodam na thread principal do jogo, no próximo frame:
 | `callpi Classe campo... Metodo argc a b` | idem, com argumentos int |
 | `callv3 Classe Metodo 3 x y z cena 0` | método que recebe `Vector3` (navegar até um ponto em outro mapa) |
 | `callx Classe [campo...] Metodo argc -- args` | argumentos tipados (abaixo) |
+| `callxm Classe [campo...] Metodo argc -- args` | igual ao `callx`, mas os caminhos (do objeto e dos `o:`) são resolvidos na thread principal, onde métodos da Unity podem rodar. A resposta só confirma a fila; erro de caminho vai para o logcat (`SROENGINE`), e quem chama confere o efeito no estado do jogo |
 | `getv Classe getter` | lê o retorno de um getter (leitura, não ação) |
 
 Tipos dos argumentos do `callx`:
@@ -82,7 +89,7 @@ Tipos dos argumentos do `callx`:
 | `q:` | uint64 (ids de char, de item) |
 | `b:` | bool (0 ou 1) |
 | `s:` | texto sem espaço (`s:` sozinho é texto vazio) |
-| `o:` | objeto por caminho, com `\|` no lugar do espaço (`o:XBagDocument\|ItemBag\|Items\|get_Item:5`) |
+| `o:` | objeto por caminho, com `\|` no lugar do espaço (`o:XBagDocument\|ItemBag\|Items\|get_Item:5`; no `callxm`, também `o:...\|m_AfterBuy\|Find:"Chest"\|GetComponent:"XUISprite"`) |
 | `n:` | nulo |
 
 ## Cuidados
