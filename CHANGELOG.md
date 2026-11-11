@@ -4,11 +4,14 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.141.0] - 2026-11-11
+
+Primeira versao publicada em Releases: EXE portatil para Windows com o engine dentro.
+
 - **App:** Guild utilities com a opcao "Guild Store toda semana": compra o limite semanal de Pet Eggs - Precious (8), Pet Eggs - Rare (3) e Dimension Hole - Forgotten World (2), so com contribuicao da guilda, uma unidade por vez, conferindo a semana, a contribuicao e que Silk e Diamond nao mudaram. A contagem da loja zera no domingo e o proximo Guild utilities compra de novo. Desligada numa instalacao nova.
 - **App:** o card "Gratis do dia" pega o premio diario do cartao de privilegio (Silver, Golden ou Premium Card) no Premium Shop > Privilege: so com a loja fechada, abre a aba, aperta o Claim por metodo, confirma pelo servidor e fecha. O dia do premio vira as 05:00 do servidor. Diamond nao pode mudar e Silk nao pode cair.
 - **Engine:** comando `callxm`, o `callx` com os caminhos resolvidos na thread principal (pra chegar em botao de tela por `Find`/`GetComponent`); no meio de um caminho, `Metodo:"texto"` passa a mandar texto de verdade e escolhe a versao do metodo com parametro `string`. Antes o texto virava `0` e prendeu o engine.
 - **App:** Continental com mapa "Automatico": cada char rola no mapa mais alto que o nivel dele libera (Lv.87 no Asia Minor, Lv.60 no Desert), tambem no ciclo entre chars. Vem como padrao numa instalacao nova; os mapas 4 a 7 ganharam o nome real (Roc Mountain, Eastern Europe, Asia Minor, Central Asia).
-
 - **Dev:** TypeScript 7 (`tsconfig` com `moduleResolution: bundler`), esbuild 0.28 e sql.js 1.15 (SQLite 3.54). O canal do engine aceita o `data` do socket como texto ou Buffer. Sem mudanca de comportamento no app.
 - **Dev:** Electron 45 (Node 24) com `@types/node` 24.19 e electron-builder 26.
 - **Dev:** Tailwind 4 com o `@tailwindcss/cli` e a configuracao de sempre (`@config`); o build do CSS tinha quebrado com o Tailwind 4. O painel ficou igual (cores, fontes, bordas, larguras), com tres ajustes pequenos do Tailwind 4: o conteudo de cada aba comeca 16 px mais acima (o `space-y` deixou de somar a margem dos paineis escondidos), os titulos de secao ficaram 4 px mais baixos e o cabecalho da tabela da IA 2 px. O cursor de mao nos botoes foi mantido.
