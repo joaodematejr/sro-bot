@@ -9,6 +9,11 @@ updates:
       # Patch e minor num PR so por semana; major vem em PR proprio.
       menores:
         update-types: [minor, patch]
+    ignore:
+      # Os tipos acompanham o Node do Electron (Electron 31 = Node 20). Tipo de
+      # Node mais novo deixaria o tsc aceitar API que nao existe no app.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "app"
 
