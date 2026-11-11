@@ -498,7 +498,7 @@ test("corpo de monstro (get_IsDead) nao conta como perto nem vira alvo da busca"
   const q = async (_t: string, body: string) => {
     if (body.endsWith("get_Count")) return { ok: true, int: 2 };
     const i = Number(/get_Item:(\d+)/.exec(body)?.[1]);
-    if (body.endsWith("get_IsEnemy")) return { ok: true, bool: true };
+    if (body.endsWith("_eEntity_Type")) return { ok: true, int: 0x19 };
     if (body.endsWith("get_IsDead")) return { ok: true, bool: i === 1 };
     const off = body.endsWith("+8") ? 2 : body.endsWith("+4") ? 1 : 0;
     return { ok: true, int: f(pos[i][off]) };
@@ -612,7 +612,7 @@ test("parar a caca fora do Treino conta so monstro vivo a menos de 10 m (nao os 
   const q = async (_t: string, body: string) => {
     if (body.endsWith("get_Count")) return { ok: true, int: 3 };
     const i = Number(/get_Item:(\d+)/.exec(body)?.[1]);
-    if (body.endsWith("get_IsEnemy")) return { ok: true, bool: true };
+    if (body.endsWith("_eEntity_Type")) return { ok: true, int: 0x19 };
     if (body.endsWith("get_IsDead")) return { ok: true, bool: i === 2 };
     if (body.endsWith("get_Level")) return { ok: true, int: 76 };
     const off = body.endsWith("+8") ? 2 : body.endsWith("+4") ? 1 : 0;
@@ -622,6 +622,33 @@ test("parar a caca fora do Treino conta so monstro vivo a menos de 10 m (nao os 
   assert.equal(await readEnemiesAround(q, [1000, 0, 0]), 0);
   // Sem posicao: conta todos os carregados (lado seguro).
   assert.equal(await readEnemiesAround(q, undefined), 3);
+});
+
+// 2026-11-11, Jangan: os pets vem com o bit de inimigo e o Night Fang do proprio char
+// contava como "monstro a 0 m", travando a saida segura.
+test("pet nao conta como monstro perto, nao vira alvo da busca nem entra no nivel da area", async () => {
+  const { isMonsterType, readEnemiesNear, readEnemyPositions, readNearbyEnemyLevels } = await import("../train");
+  assert.equal(isMonsterType(0x19), true); // monstro comum
+  assert.equal(isMonsterType(0x99), true); // elite
+  assert.equal(isMonsterType(0x10019), false); // pet de combate
+  assert.equal(isMonsterType(0x20019), false); // pet de coleta
+  assert.equal(isMonsterType(0x3), false); // outro jogador
+  assert.equal(isMonsterType(0x7), false); // o proprio char
+  assert.equal(isMonsterType(undefined), false);
+  const f = (v: number) => { const b = Buffer.alloc(4); b.writeFloatLE(v); return b.readInt32LE(); };
+  // Todos a 1 m: monstro, pet de combate, pet de coleta, jogador, tipo nao lido.
+  const types: (number | undefined)[] = [0x19, 0x10019, 0x20019, 0x3, undefined];
+  const q = async (_t: string, body: string) => {
+    if (body.endsWith("get_Count")) return { ok: true, int: types.length };
+    const i = Number(/get_Item:(\d+)/.exec(body)?.[1]);
+    if (body.endsWith("_eEntity_Type")) return types[i] === undefined ? { ok: false } : { ok: true, int: types[i] };
+    if (body.endsWith("get_IsDead")) return { ok: true, bool: false };
+    if (body.endsWith("get_Level")) return { ok: true, int: 80 + i };
+    return { ok: true, int: f(body.endsWith("+8") ? 0 : 1) };
+  };
+  assert.equal(await readEnemiesNear(q, 0, 0, 10), 1);
+  assert.deepEqual(await readEnemyPositions(q), [[1, 1, 0]]);
+  assert.deepEqual(await readNearbyEnemyLevels(q), [80]);
 });
 
 test("buff e x10 so dentro do raio do ponto (o booster de 08:31 foi gasto na cidade)", async () => {

@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** pet de jogador (inclusive o do proprio char) deixa de contar como monstro. O jogo marca pet com o bit de inimigo, e ele entrava no "monstro a menos de 10 m" que segura a saida segura, na busca de alvo e no nivel da area. Agora o app le o tipo da entidade (`_eEntity_Type`) e ignora pet, montaria e invocacao, com o mesmo numero de leituras.
+
 ## [0.142.0] - 2026-11-11
 
 - **App:** depois de atualizar pelo botao, o app volta como estava: reabre o jogo (so reconecta, com o char em mundo) e religa o bot se ele estava rodando. O aviso vale por 10 min. Passa a valer nas atualizacoes feitas a partir desta versao.

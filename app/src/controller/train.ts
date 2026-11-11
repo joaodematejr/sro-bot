@@ -15,7 +15,7 @@
 //   Ponto    -> XScene get_SceneID (100001 = Jangan) + CONN corrected [x, altura, z].
 //               Ir ate o ponto = MOVE x y z (Navigate na thread principal; so
 //               dentro da mesma cena).
-//   Area     -> XEntityMgr GetAll (List<XEntity> por perto): get_IsEnemy e
+//   Area     -> XEntityMgr GetAll (List<XEntity> por perto): _eEntity_Type e
 //               get_Attributes get_Level. Visto no Grassland de Jangan: Mangyang
 //               nivel 1 pro char 60, EXP 0 em 4 min de caca.
 //   Morte    -> CONN dead; reserva: ReviveDlg.OnBtnBackCityClicked (gratis).
@@ -768,8 +768,7 @@ export async function readNearbyEnemyLevels(q: EngineQuery, max = 30): Promise<n
   const count = typeof n.int === "number" ? Math.min(n.int, max) : 0;
   const out: number[] = [];
   for (let i = 0; i < count; i++) {
-    const e = await q("GETP", `XEntityMgr GetAll get_Item:${i} get_IsEnemy`);
-    if (e.bool !== true) continue;
+    if (!isMonsterType((await q("GETP", `XEntityMgr GetAll get_Item:${i} ${ENTITY_TYPE}`)).int)) continue;
     const l = await q("GETP", `XEntityMgr GetAll get_Item:${i} get_Attributes get_Level`);
     if (typeof l.int === "number") out.push(l.int);
   }
@@ -973,6 +972,17 @@ export function seekBody(t: [number, number, number], scene: number): string {
   return `callv3 TeleportDocument TeleportNavigate 3 ${t[0]} ${t[1]} ${t[2]} ${scene} 0`;
 }
 
+// XEntity._eEntity_Type: o IsEnemy do jogo e so o bit Enemy (0x8), e pet tambem tem
+// esse bit. Lido ao vivo em Jangan, 2026-11-11: pet de combate = 0x10019 (Spirit),
+// pet de coleta = 0x20019 (Scavenger). Puppet, Affiliate e Mount tambem nao sao monstro.
+const ENTITY_ENEMY = 0x8;
+const PET_TYPE_BITS = 0x40 | 0x2000 | 0x4000 | 0x10000 | 0x20000;
+const ENTITY_TYPE = "_eEntity_Type";
+
+export function isMonsterType(type: unknown): boolean {
+  return typeof type === "number" && (type & ENTITY_ENEMY) !== 0 && (type & PET_TYPE_BITS) === 0;
+}
+
 // Posicao (x, altura, z) dos inimigos carregados.
 export async function readEnemyPositions(q: EngineQuery, max = 40): Promise<[number, number, number][]> {
   const n = await q("GETP", "XEntityMgr GetAll get_Count");
@@ -980,7 +990,7 @@ export async function readEnemyPositions(q: EngineQuery, max = 40): Promise<[num
   const out: [number, number, number][] = [];
   for (let i = 0; i < count; i++) {
     const base = `XEntityMgr GetAll get_Item:${i}`;
-    if ((await q("GETP", `${base} get_IsEnemy`)).bool !== true) continue;
+    if (!isMonsterType((await q("GETP", `${base} ${ENTITY_TYPE}`)).int)) continue;
     // Corpo de monstro (fica uns segundos no chao): nao ataca nem e alvo. Visto
     // ao vivo em 2026-11-08 17:03 (37 corpos em 90 s no Niya Shaman).
     if ((await q("GETP", `${base} get_IsDead`)).bool === true) continue;
@@ -1009,7 +1019,7 @@ export async function readEnemiesNear(q: EngineQuery, x: number, z: number, radi
   let near = 0;
   for (let i = 0; i < count; i++) {
     const base = `XEntityMgr GetAll get_Item:${i}`;
-    if ((await q("GETP", `${base} get_IsEnemy`)).bool !== true) continue;
+    if (!isMonsterType((await q("GETP", `${base} ${ENTITY_TYPE}`)).int)) continue;
     // Corpo de monstro (fica uns segundos no chao): nao ataca nem e alvo. Visto
     // ao vivo em 2026-11-08 17:03 (37 corpos em 90 s no Niya Shaman).
     if ((await q("GETP", `${base} get_IsDead`)).bool === true) continue;
