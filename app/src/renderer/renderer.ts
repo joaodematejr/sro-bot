@@ -11,6 +11,7 @@ import { QIGONG_REQUEST_EVERY_MS } from "../controller/qigong";
 import { EXP_KEEP_MS, expDropText, type ExpPoint as RatePoint, type ExpWatch, expWatchStep } from "../controller/expwatch";
 import { alertFromLog, type TelegramAlert } from "../controller/telegram";
 import { uniqueStep, uniqueText } from "../controller/unique";
+import { clearsNotice, nextNotice, noticeFromLog, type StopNotice } from "../controller/stopnotice";
 
 interface TgSettings {
   enabled: boolean;
@@ -1994,6 +1995,48 @@ function log(msg: string): void {
   if (ev) void window.sro.histEvent?.({ ts: Date.now(), ...ev }).catch(() => undefined);
   const al = alertFromLog(msg);
   if (al) void sendAlert(al);
+  const nt = noticeFromLog(msg, Date.now());
+  if (nt) setNotice(nextNotice(stopNotice, nt));
+  else if (clearsNotice(msg)) setNotice(null);
+}
+
+// Por que parou: faixa fixa no topo, salva no localStorage ate o "x" ou ate o
+// bot ser iniciado de novo.
+let stopNotice: StopNotice | null = null;
+const NOTICE_COLORS = { stop: "bg-danger/15 text-danger", warn: "bg-warn/15 text-warn", info: "bg-ink-700 text-gray-200" };
+
+function setNotice(n: StopNotice | null): void {
+  stopNotice = n;
+  try {
+    if (n) localStorage.setItem("stopNotice", JSON.stringify(n));
+    else localStorage.removeItem("stopNotice");
+  } catch {
+    /* sem storage: some ao fechar o app */
+  }
+  showNotice();
+}
+
+function showNotice(): void {
+  const box = $("stop-notice");
+  box.classList.toggle("hidden", !stopNotice);
+  if (!stopNotice) return;
+  box.className = `flex items-start gap-3 px-4 py-2 border-b border-line text-sm ${NOTICE_COLORS[stopNotice.level]}`;
+  const d = new Date(stopNotice.at);
+  const today = d.toDateString() === new Date().toDateString();
+  $("stop-notice-at").textContent = d.toLocaleString("pt-BR", today ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  $("stop-notice-text").textContent = stopNotice.text;
+  $("stop-notice-hint").textContent = stopNotice.hint;
+}
+
+function wireNotice(): void {
+  try {
+    const raw = localStorage.getItem("stopNotice");
+    if (raw) stopNotice = JSON.parse(raw) as StopNotice;
+  } catch {
+    stopNotice = null;
+  }
+  $("stop-notice-close").addEventListener("click", () => setNotice(null));
+  showNotice();
 }
 
 // Diagnostico: manda o log da tela e o localStorage pro main, que junta o resto,
@@ -2684,6 +2727,7 @@ function wire(): void {
   $("btn-vpn-off").addEventListener("click", () => void vpnAction(() => window.sro.vpnDisable()));
   $("btn-vpn-ping").addEventListener("click", () => void measureVpnPing());
   void refreshVpn();
+  wireNotice();
   window.setInterval(() => void checkUniques(), UNIQUE_CHECK_MS);
   showContNext();
   $("act-cont").addEventListener("change", showContNext);

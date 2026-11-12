@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** faixa de **por que parou** no topo do painel: a ultima parada importante, a hora e o que fazer (treino concluido por limite de mortes ou outro motivo, conta em outro aparelho, jogo que nao reabriu, mochila cheia, EXP/h caindo, e em cinza as quedas que o app ja resolveu sozinho). Fica salva com o app fechado (quem abre de manha ve o que houve de noite) ate o "x" ou ate o bot ser iniciado de novo; um aviso leve nao cobre um mais grave.
+
 ## [0.145.1] - 2026-11-12
 
 - **App:** voltam as duas mudancas do Continental da 0.144.0 que a 0.145.0 perdeu no merge do Album de Cards: a hora da proxima rodada de dados no painel e a passada de baus que rola os dados com o char fora da caca.

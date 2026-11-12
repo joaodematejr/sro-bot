@@ -56,6 +56,15 @@
             <div class="tab" data-tab="ai">IA</div>
           </nav>
 
+          <!-- Por que parou: a ultima parada importante e o que fazer -->
+          <div id="stop-notice" class="hidden flex items-start gap-3 px-4 py-2 border-b border-line text-sm">
+            <div class="flex-1 min-w-0">
+              <div><span id="stop-notice-at" class="text-xs text-muted mr-2"></span><span id="stop-notice-text" class="font-medium"></span></div>
+              <div id="stop-notice-hint" class="text-xs text-muted"></div>
+            </div>
+            <button id="stop-notice-close" class="text-muted hover:text-gray-100 px-1" title="Fechar o aviso">×</button>
+          </div>
+
           <section class="flex-1 overflow-y-auto p-4 space-y-4">
             <!-- Aba Mapa: visao de cima, ao vivo, do que esta em volta do char -->
             <div id="tab-map" class="hidden space-y-3">
