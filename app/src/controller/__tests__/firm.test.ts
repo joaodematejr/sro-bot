@@ -66,6 +66,16 @@ test("sem nada entregavel: pede ajuda ate 3 por dia e depois conclui", () => {
 test("meta do dia batida conclui; sem guilda falha", () => {
   assert.equal(nextFirmStep(snap({ count: 3 }), DEFAULT_FIRM_CONFIG, newFirmProgress(), 0).kind, "done");
   assert.equal(nextFirmStep(snap({ questStatus: -1 }), DEFAULT_FIRM_CONFIG, newFirmProgress(), 0).kind, "fail");
+  const noGuild = nextFirmStep(snap({ questStatus: -1, inGuild: false, totalRewarded: false }), DEFAULT_FIRM_CONFIG, newFirmProgress(), 0);
+  assert.equal(noGuild.kind === "fail" && noGuild.reason, "char sem guilda: o Firm e uma missao da guilda");
+});
+
+// Ao vivo em 2026-11-12: premio do dia pego, a 2222 some da lista (ficam 2223
+// Bounty Quest e 2224 Mission Scroll) e o char segue na guilda.
+test("missao fora da lista com o premio do dia pego conclui, sem falhar", () => {
+  const s = nextFirmStep(snap({ questStatus: -1, totalRewarded: true, inGuild: true }), DEFAULT_FIRM_CONFIG, newFirmProgress(), 0);
+  assert.equal(s.kind, "done");
+  assert.match(s.kind === "done" ? s.reason : "", /ja entregue/);
 });
 
 test("missao por aceitar: para a caca, vai, confirma a viagem, chega e aceita", () => {

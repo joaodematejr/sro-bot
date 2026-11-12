@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** o Firm ja entregue no dia deixa de aparecer como "falhou: missao do Firm nao achada (char sem guilda?)". Depois do premio total o jogo tira a missao da lista ate a virada do dia; agora o app le o premio do dia e a guilda, conclui com "Firm de hoje ja entregue" e nao tenta de novo a cada Iniciar bot. "Sem guilda" so aparece quando o char nao tem guilda mesmo.
+
 ## [0.146.0] - 2026-11-12
 
 - **App:** faixa de **por que parou** no topo do painel: a ultima parada importante, a hora e o que fazer (treino concluido por limite de mortes ou outro motivo, conta em outro aparelho, jogo que nao reabriu, mochila cheia, EXP/h caindo, e em cinza as quedas que o app ja resolveu sozinho). Fica salva com o app fechado (quem abre de manha ve o que houve de noite) ate o "x" ou ate o bot ser iniciado de novo; um aviso leve nao cobre um mais grave.

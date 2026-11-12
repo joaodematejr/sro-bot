@@ -70,6 +70,7 @@ export interface FirmSnapshot {
   count: number; // entregues hoje (tarefas com isRewarded; o _count do documento nao e isso)
   askedNum: number;
   totalRewarded?: boolean; // premio total do dia ja pego (undefined = nao lido)
+  inGuild?: boolean; // so lido quando a missao nao esta na lista
   tasks: FirmTask[];
 }
 
@@ -148,7 +149,11 @@ export const FIRM_DEFEND_HP_PCT = 60;
 export function nextFirmStep(s: FirmSnapshot | null, cfg: FirmConfig, p: FirmProgress, now: number): FirmStep {
   if (!s) return { kind: "wait", reason: "engine fora" };
   if (!s.inWorld) return { kind: "wait", reason: "fora de mundo" };
-  if (s.questStatus < 0) return { kind: "fail", reason: "missao do Firm nao achada (char sem guilda?)" };
+  if (s.questStatus < 0) {
+    if (s.totalRewarded) return { kind: "done", reason: "Firm de hoje ja entregue (premio do dia pego; a missao volta na virada do dia)" };
+    if (s.inGuild === false) return { kind: "fail", reason: "char sem guilda: o Firm e uma missao da guilda" };
+    return { kind: "fail", reason: "missao do Firm nao achada na lista" };
+  }
   if (p.defended) return { kind: "fail", reason: `atacado com HP abaixo de ${FIRM_DEFEND_HP_PCT}% indo ao Leebaek; caca religada, Firm fica pra depois` };
   if (p.huntStopped && s.inCombat && s.hpPct !== undefined && s.hpPct < FIRM_DEFEND_HP_PCT)
     return act("defend", `atacado com HP abaixo de ${FIRM_DEFEND_HP_PCT}% indo ao Leebaek: religar a caca`, JSON.stringify({ on: 1 }));
@@ -254,8 +259,17 @@ export async function readFirmSnapshot(q: EngineQuery): Promise<FirmSnapshot | n
   s.inCombat = player.inCombat === true;
   s.hpPct = hpPercent(player.hp, player.maxHp);
   if (s.questStatus === QUEST_CAN_TAKE) s.safeToLeave = safeToStopHunt(s.inCombat, await readEnemiesAround(q, player.corrected), s.hpPct);
-  if (s.questStatus !== QUEST_TAKEN) return s;
   const DOC = "XGuildDailyTaskDocument";
+  // Sem a missao na lista: ou o Firm do dia ja foi entregue (o jogo tira a 2222
+  // da lista depois do premio total ate a virada; 2026-11-12) ou o char nao tem guilda.
+  if (s.questStatus < 0) {
+    const total = await q("GETP", `${DOC} get_IsRewarded`);
+    if (total.ok === true) s.totalRewarded = total.bool === true;
+    const g = await q("GETP", "XGuildDocument get_InGuild");
+    if (g.ok === true) s.inGuild = g.bool === true;
+    return s;
+  }
+  if (s.questStatus !== QUEST_TAKEN) return s;
   s.askedNum = await num(`${DOC} _askedNum`, 0);
   const total = await q("GETP", `${DOC} get_IsRewarded`);
   if (total.ok === true) s.totalRewarded = total.bool === true;
