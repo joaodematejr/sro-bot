@@ -10,6 +10,7 @@ import { luckyMoneyWindow } from "../controller/freebies";
 import { QIGONG_REQUEST_EVERY_MS } from "../controller/qigong";
 import { EXP_KEEP_MS, expDropText, type ExpPoint as RatePoint, type ExpWatch, expWatchStep } from "../controller/expwatch";
 import { alertFromLog, type TelegramAlert } from "../controller/telegram";
+import { uniqueStep, uniqueText } from "../controller/unique";
 
 interface TgSettings {
   enabled: boolean;
@@ -54,6 +55,7 @@ declare global {
       setup: () => Promise<{ serial: string; port: number }>;
       player: () => Promise<PlayerState>;
       map: () => Promise<MapView | null>;
+      ents: () => Promise<Pick<MapView, "me" | "ents"> | null>;
       inject: () => Promise<{ ok: boolean; erro?: string }>;
       restore: () => Promise<{ ok: boolean; erro?: string }>;
       gameForeground: () => Promise<boolean>;
@@ -2682,6 +2684,7 @@ function wire(): void {
   $("btn-vpn-off").addEventListener("click", () => void vpnAction(() => window.sro.vpnDisable()));
   $("btn-vpn-ping").addEventListener("click", () => void measureVpnPing());
   void refreshVpn();
+  window.setInterval(() => void checkUniques(), UNIQUE_CHECK_MS);
   showContNext();
   $("act-cont").addEventListener("change", showContNext);
   window.setInterval(showContNext, 60 * 1000);
@@ -2961,6 +2964,31 @@ function drawMap(v: MapView | null): void {
     + (v.source === "getp" ? " · leitura lenta (engine sem ENTS: sem HP nem itens no chão)" : "");
 }
 
+// Aviso de unico: com a aba Mapa aberta usa a leitura dela; fechada, le o ENTS a
+// cada 15 s com o bot rodando. Avisa no log (que vai pro Telegram) e no Windows.
+let uniqueSeen = new Map<number, number>();
+const UNIQUE_CHECK_MS = 15 * 1000;
+
+function noteUniques(v: Pick<MapView, "me" | "ents">): void {
+  const r = uniqueStep(uniqueSeen, v.ents, Date.now());
+  uniqueSeen = r.seen;
+  for (const e of r.fresh) {
+    const text = uniqueText(e, v.me);
+    log(text);
+    try {
+      new Notification("SRO Bot: unico", { body: text });
+    } catch {
+      /* sem notificacao do sistema: fica o log */
+    }
+  }
+}
+
+async function checkUniques(): Promise<void> {
+  if (!polling || !gameOpen || mapVisible()) return;
+  const v = await window.sro.ents().catch(() => null);
+  if (v) noteUniques(v);
+}
+
 async function mapTick(): Promise<void> {
   if (!mapVisible() || mapBusy || Date.now() < mapNextAt) return;
   const live = $("map-live");
@@ -2978,6 +3006,7 @@ async function mapTick(): Promise<void> {
     live.className = v ? "pill bg-ok/20 text-ok" : "pill bg-ink-600 text-muted";
     mapNextAt = Date.now() + (v?.source === "getp" ? 20000 : 1000);
     drawMap(v);
+    if (v?.source === "ents") noteUniques(v);
   } catch {
     mapNextAt = Date.now() + 4000;
   } finally {

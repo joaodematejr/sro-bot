@@ -20,6 +20,7 @@ const ALERT_RULES: [string, AlertGroup, RegExp][] = [
   ["outro aparelho", "problem", /entrou em outro aparelho/],
   ["mochila", "problem", /^Mochila cheia/],
   ["exp", "problem", /^EXP\/h caiu/],
+  ["unico", "problem", /^Unico por perto/],
   ["treino", "done", /^treino concluido/],
   ["continental", "done", /\[continental\] concluido/],
 ];

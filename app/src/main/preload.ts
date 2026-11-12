@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("sro", {
   setup: () => ipcRenderer.invoke("engine:setup"),
   player: () => ipcRenderer.invoke("engine:player"),
   map: () => ipcRenderer.invoke("engine:map"),
+  ents: () => ipcRenderer.invoke("engine:ents"),
   inject: () => ipcRenderer.invoke("engine:inject"),
   restore: () => ipcRenderer.invoke("engine:restore"),
   gameForeground: () => ipcRenderer.invoke("engine:gamefg"),

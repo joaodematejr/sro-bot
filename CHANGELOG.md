@@ -5,6 +5,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 ## [Nao lancado]
 
 - **App:** voltam as duas mudancas do Continental da 0.144.0 que a 0.145.0 perdeu no merge do Album de Cards: a hora da proxima rodada de dados no painel e a passada de baus que rola os dados com o char fora da caca.
+- **App:** aviso de monstro unico. Com o bot rodando, o app le as entidades em volta pelo `ENTS` a cada 15 s (ou a cada leitura da aba Mapa) e, quando aparece um chefe vivo, avisa uma vez no log, no Windows e no Telegram (grupo "Problemas") com nome, nivel e distancia. O mesmo unico so avisa de novo depois de sumir por 30 min. So avisa: o bot nao vai atras dele. Com engine antigo (sem `ENTS`) nao ha aviso.
 
 ## [0.145.0] - 2026-11-12
 

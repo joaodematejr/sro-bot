@@ -193,6 +193,13 @@ ipcMain.handle("engine:map", async () => {
   return { ...snap, scene, sceneName: mapScene.name, channel: typeof ch.int === "number" ? ch.int : undefined };
 });
 
+// Aviso de unico: so o ENTS (~40 ms). Engine antigo devolve null: a leitura
+// reserva pelo GETP leva segundos e nao roda a cada checagem.
+ipcMain.handle("engine:ents", async () => {
+  const r = await sendCommand("127.0.0.1", HOST_PORT, "ENTS", String(MAP_RADIUS_M));
+  return parseEnts(r, new Set());
+});
+
 // Mochila: espacos livres e ocupados (so leitura; pro aviso de mochila cheia).
 ipcMain.handle("engine:bag", async () => {
   const q = (body: string) => sendCommand("127.0.0.1", HOST_PORT, "GETP", body);
