@@ -19,6 +19,16 @@ test("mapa: classifica monstro, elite, chefe, party, jogador, pet e NPC", () => 
   assert.equal(classifyEntity(0, 1, team), "other");
 });
 
+test("mapa: Champion e Giant viram elite pelo nome (o jogo manda tipo de monstro comum)", () => {
+  const none = new Set<number>();
+  assert.equal(classifyEntity(0x19, 1, none, "Niya Hunter - Champion"), "elite");
+  assert.equal(classifyEntity(0x19, 1, none, "Niya Sniper Giant"), "elite");
+  assert.equal(classifyEntity(0x19, 1, none, "Niya Hunter"), "monster");
+  assert.equal(classifyEntity(0x10019, 1, none, "Elite Penguin"), "pet"); // pet com nome de elite segue pet
+  const s = parseEnts({ ok: true, me: { x: 0, z: 0, id: 1 }, ents: [[25, 9, 1, 1, 76, 0, 21638, 21638, "Niya Hunter - Champion"]], drops: [] }, none);
+  assert.equal(s?.ents[0].kind, "elite");
+});
+
 test("mapa: le a resposta do ENTS e reconhece o engine antigo (sem ENTS)", () => {
   const r = {
     ok: true,

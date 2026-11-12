@@ -62,13 +62,17 @@ export interface MapSnapshot {
 // Raio lido em volta do char (o ENTS limita a 150 entidades e 80 itens).
 export const MAP_RADIUS_M = 120;
 
+// Monstro mais forte que o jogo nao marca com o bit de elite: "Niya Hunter -
+// Champion" veio tipo 0x19 com o dobro do HP (ponto 2, 2026-11-12).
+const STRONG_NAME = /\b(Champion|Giant|Elite)\b/i;
+
 // Pet ou montaria (antes de tudo: pet tambem tem o bit de inimigo), monstro (chefe,
 // elite ou comum), NPC, jogador da party, outro jogador ou outro.
-export function classifyEntity(type: number, id: number, team: Set<number>): MapKind {
+export function classifyEntity(type: number, id: number, team: Set<number>, name = ""): MapKind {
   if (type & PET_BITS) return "pet";
   if (type & ENTITY.Enemy) {
     if (type & ENTITY.Boss) return "boss";
-    if (type & ENTITY.Elite) return "elite";
+    if (type & ENTITY.Elite || STRONG_NAME.test(name)) return "elite";
     return "monster";
   }
   if (type & ENTITY.Npc) return "npc";
@@ -85,7 +89,7 @@ export function parseEnts(r: Record<string, unknown>, team: Set<number>): MapSna
     if (!Array.isArray(e) || e.length < 9) continue;
     const [type, id, x, z, level, dead, hp, maxHp, name] = e as [number, number, number, number, number, number, number, number, string];
     if (typeof x !== "number" || typeof z !== "number") continue;
-    ents.push({ kind: classifyEntity(type, id, team), id, x, z, level, dead: dead === 1, hp, maxHp, name: String(name ?? "") });
+    ents.push({ kind: classifyEntity(type, id, team, String(name ?? "")), id, x, z, level, dead: dead === 1, hp, maxHp, name: String(name ?? "") });
   }
   const drops: MapDrop[] = [];
   for (const d of Array.isArray(r.drops) ? (r.drops as unknown[]) : []) {
