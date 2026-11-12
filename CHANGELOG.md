@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.146.0] - 2026-11-12
+
 - **App:** faixa de **por que parou** no topo do painel: a ultima parada importante, a hora e o que fazer (treino concluido por limite de mortes ou outro motivo, conta em outro aparelho, jogo que nao reabriu, mochila cheia, EXP/h caindo, e em cinza as quedas que o app ja resolveu sozinho). Fica salva com o app fechado (quem abre de manha ve o que houve de noite) ate o "x" ou ate o bot ser iniciado de novo; um aviso leve nao cobre um mais grave.
 
 ## [0.145.1] - 2026-11-12
