@@ -51,6 +51,7 @@ import type { HistEvent } from "../controller/history";
 import { diagnosticFileName } from "../controller/diagnostic";
 import { collectDiagnostic } from "./diagnostic";
 import { setupUpdater } from "./updater";
+import { isLocalizationKey, MAP_RADIUS_M, parseEnts, readMapGetp, readTeamIds } from "../controller/map";
 
 // Configuracao de caminhos (pasta do LDPlayer, instancia, adb) na pasta de dados.
 function settingsPath(): string {
@@ -155,6 +156,41 @@ ipcMain.handle("engine:setup", async () => {
 
 ipcMain.handle("engine:player", async () => {
   return queryPlayer("127.0.0.1", HOST_PORT);
+});
+
+// Mapa ao vivo (aba Mapa): uma leitura por chamada. ENTS quando o engine tem;
+// senao a leitura reserva pelo GETP. O time e o nome do mapa mudam pouco: o time
+// e relido a cada 30 s e o nome so quando a cena muda.
+let mapTeam = { ids: new Set<number>(), at: 0 };
+let mapScene = { id: -1, name: "" };
+const mapNames = new Map<string, string>();
+ipcMain.handle("engine:map", async () => {
+  const q = (tag: string, body: string) => sendCommand("127.0.0.1", HOST_PORT, tag, body);
+  if (Date.now() - mapTeam.at > 30000) mapTeam = { ids: await readTeamIds(q), at: Date.now() };
+  const r = await q("ENTS", String(MAP_RADIUS_M));
+  const snap = parseEnts(r, mapTeam.ids) ?? (await readMapGetp(q, mapTeam.ids));
+  if (!snap) return null;
+  // Nome de NPC vem como chave: traduz e guarda (no maximo 10 novas por leitura).
+  let fresh = 0;
+  for (const e of snap.ents) {
+    if (!isLocalizationKey(e.name)) continue;
+    if (!mapNames.has(e.name) && fresh++ < 10) {
+      const t = await q("GETP", `Localization Localize:"${e.name}"`);
+      mapNames.set(e.name, typeof t.str === "string" && t.str !== e.name ? t.str : "");
+    }
+    e.name = mapNames.get(e.name) ?? "";
+  }
+  const sc = await q("GETP", "XScene get_SceneID");
+  const scene = sc.ok === true && typeof sc.int === "number" ? sc.int : -1;
+  if (scene !== mapScene.id) {
+    const nm = scene > 0 ? await q("GETP", `Localization Localize:"SceneList_Comment_${scene}"`) : {};
+    const name = typeof nm.str === "string" && !nm.str.startsWith("SceneList_") ? nm.str : "";
+    mapScene = { id: scene, name };
+  }
+  const ln = await q("GETP", "ChannelDocument get_CurrentLineID");
+  const line = ln.ok === true && typeof ln.int === "number" ? ln.int : undefined;
+  const ch = line ? await q("GETP", `ChannelDocument LineIDToLine:${line}`) : {};
+  return { ...snap, scene, sceneName: mapScene.name, channel: typeof ch.int === "number" ? ch.int : undefined };
 });
 
 // Mochila: espacos livres e ocupados (so leitura; pro aviso de mochila cheia).

@@ -1968,6 +1968,177 @@ std::string walk_path(const std::vector<std::string>& path, size_t end, void*& o
     return "";
 }
 
+// Il2CppString (UTF-16) em UTF-8 com escape de JSON. O read_il2cpp_string troca
+// letra fora do ASCII por "?"; aqui o nome sai inteiro pro mapa.
+std::string il2cpp_string_json(void* s) {
+    std::string out;
+    int len = 0;
+    if (!plausible(s) || !safe_read(&len, (char*)s + 0x10, 4) || len <= 0 || len > 128) return out;
+    for (int i = 0; i < len; i++) {
+        uint16_t c = 0;
+        if (!safe_read(&c, (char*)s + 0x14 + i * 2, 2)) break;
+        uint32_t cp = c;
+        if (c >= 0xD800 && c <= 0xDBFF && i + 1 < len) {
+            uint16_t lo = 0;
+            if (safe_read(&lo, (char*)s + 0x14 + (i + 1) * 2, 2) && lo >= 0xDC00 && lo <= 0xDFFF) {
+                cp = 0x10000 + ((uint32_t)(c - 0xD800) << 10) + (lo - 0xDC00);
+                i++;
+            }
+        }
+        if (cp == '"' || cp == '\\') { out += '\\'; out += (char)cp; }
+        else if (cp < 0x20) out += ' ';
+        else if (cp < 0x80) out += (char)cp;
+        else if (cp < 0x800) { out += (char)(0xC0 | (cp >> 6)); out += (char)(0x80 | (cp & 0x3F)); }
+        else if (cp < 0x10000) { out += (char)(0xE0 | (cp >> 12)); out += (char)(0x80 | ((cp >> 6) & 0x3F)); out += (char)(0x80 | (cp & 0x3F)); }
+        else { out += (char)(0xF0 | (cp >> 18)); out += (char)(0x80 | ((cp >> 12) & 0x3F)); out += (char)(0x80 | ((cp >> 6) & 0x3F)); out += (char)(0x80 | (cp & 0x3F)); }
+    }
+    return out;
+}
+
+// ENTS [raio]: num JSON so o que o mapa do app precisa, em vez de ~5 GETP por
+// entidade. me = jogador (x, z, id e o alvo do auto-play: _ai._target); ents =
+// [tipo, id, x, z, nivel, morto, hp, maxHp, "nome"] das entidades a ate `raio` m
+// (padrao 120, no maximo 150); drops = [x, z, item, qtd] dos itens no chao
+// (XLevelDoodadMgr._doodads com dropped e sem picked). Ids sao os 32 bits de baixo
+// (como o GETP). Le na thread do socket, sob g_read_mu: so campos e getters C#
+// do jogo (nada da Unity).
+std::string read_entities_json(float radius) {
+    if (radius <= 0 || radius > 400) radius = 120;
+    void* mgrc = find_class_by_name("XEntityMgr");
+    void* mgr = mgrc ? resolve_singleton(mgrc) : nullptr;
+    if (!plausible_obj(mgr)) return "{\"ok\":false,\"erro\":\"XEntityMgr nulo\"}";
+    FaultGuard guard;
+    void* player = nullptr;
+    if (!safe_read(&player, (char*)mgr + OFF_ENTITYMGR_PLAYER, sizeof(player)) || !plausible_obj(player))
+        return "{\"ok\":false,\"erro\":\"jogador nulo (nao esta em mundo?)\"}";
+    auto invoke0 = [](void* obj, const char* name) -> void* {
+        void* cls = safe_class_of(obj);
+        const void* m = cls ? g_api.class_get_method_from_name(cls, name, 0) : nullptr;
+        if (!m) return nullptr;
+        void* exc = nullptr;
+        void* r = g_api.runtime_invoke(m, obj, nullptr, &exc);
+        return exc ? nullptr : r;
+    };
+    auto boxed_u64 = [](void* r) -> uint64_t { uint64_t v = 0; if (r) safe_read(&v, (char*)r + 0x10, 8); return v; };
+    auto boxed_i32 = [](void* r) -> int { int v = 0; if (r) safe_read(&v, (char*)r + 0x10, 4); return v; };
+    auto boxed_b = [](void* r) -> bool { uint8_t v = 0; if (r) safe_read(&v, (char*)r + 0x10, 1); return v != 0; };
+    auto entity_id = [&](void* e) -> uint32_t { return (uint32_t)boxed_u64(invoke0(e, "get_ID")); };
+    float me[3] = {0, 0, 0};
+    safe_read(me, (char*)player + OFF_XENTITY_CORRECTED_POS, sizeof(me));
+    // Alvo do auto-play: XAIComponent._target (o _ai do jogador fica em +0xd8).
+    uint32_t target = 0;
+    void* ai = nullptr;
+    if (safe_read(&ai, (char*)player + 0xd8, sizeof(ai)) && plausible_obj(ai)) {
+        void* tf = find_field_in_chain(safe_class_of(ai), "_target");
+        void* t = nullptr;
+        if (tf && safe_read(&t, (char*)ai + g_api.field_get_offset(tf), sizeof(t)) && plausible_obj(t)) target = entity_id(t);
+    }
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), "{\"ok\":true,\"me\":{\"x\":%.1f,\"z\":%.1f,\"id\":%u,\"target\":%u},\"ents\":[",
+                  me[0], me[2], entity_id(player), target);
+    std::string j = buf;
+    void* list = invoke0(mgr, "GetAll");
+    int size = 0;
+    void* items = nullptr;
+    if (plausible_obj(list)) {
+        safe_read(&items, (char*)list + 0x10, sizeof(items));
+        safe_read(&size, (char*)list + 0x18, 4);
+    }
+    int n = 0;
+    static size_t type_off = 0;
+    for (int i = 0; plausible_obj(items) && i < size && i < 400 && n < 150; i++) {
+        void* e = nullptr;
+        if (!safe_read(&e, (char*)items + 0x20 + (size_t)i * 8, sizeof(e)) || !plausible_obj(e) || e == player) continue;
+        float p[3] = {0, 0, 0};
+        if (!safe_read(p, (char*)e + OFF_XENTITY_CORRECTED_POS, sizeof(p))) continue;
+        float dx = p[0] - me[0], dz = p[2] - me[2];
+        if (dx * dx + dz * dz > radius * radius) continue;
+        if (!type_off) {
+            void* tf = find_field_in_chain(safe_class_of(e), "_eEntity_Type");
+            if (tf) type_off = g_api.field_get_offset(tf);
+        }
+        int type = 0;
+        if (type_off) safe_read(&type, (char*)e + type_off, 4);
+        int level = 0, hp = 0, maxHp = 0;
+        void* attr = nullptr;
+        if (safe_read(&attr, (char*)e + OFF_XOBJECT_ATTR, sizeof(attr)) && plausible_obj(attr)) {
+            level = boxed_i32(invoke0(attr, "get_Level"));
+            void* acls = safe_class_of(attr);
+            const void* gm = acls ? g_api.class_get_method_from_name(acls, "GetAttr", 1) : nullptr;
+            if (gm) {
+                auto ga = [&](int a) -> int {
+                    void* pa[1] = {&a};
+                    void* exc = nullptr;
+                    void* r = g_api.runtime_invoke(gm, attr, pa, &exc);
+                    double d = 0;
+                    if (!exc && r) safe_read(&d, (char*)r + 0x10, 8);
+                    return (int)llround(d);
+                };
+                maxHp = ga(2011);
+                hp = ga(2012);
+            }
+        }
+        bool dead = boxed_b(invoke0(e, "get_IsDead"));
+        std::string name = il2cpp_string_json(invoke0(e, "get_Name"));
+        std::snprintf(buf, sizeof(buf), "%s[%d,%u,%.1f,%.1f,%d,%d,%d,%d,\"", n ? "," : "", type, entity_id(e), p[0], p[2], level,
+                      dead ? 1 : 0, hp, maxHp);
+        j += buf;
+        j += name;
+        j += "\"]";
+        n++;
+    }
+    j += "],\"drops\":[";
+    void* dmc = find_class_by_name("XLevelDoodadMgr");
+    void* dm = dmc ? resolve_singleton(dmc) : nullptr;
+    int nd = 0;
+    if (plausible_obj(dm)) {
+        void* lf = find_field_in_chain(safe_class_of(dm), "_doodads");
+        void* dl = nullptr;
+        if (lf) safe_read(&dl, (char*)dm + g_api.field_get_offset(lf), sizeof(dl));
+        void* ditems = nullptr;
+        int dsize = 0;
+        if (plausible_obj(dl)) {
+            safe_read(&ditems, (char*)dl + 0x10, sizeof(ditems));
+            safe_read(&dsize, (char*)dl + 0x18, 4);
+        }
+        static size_t off_pos = 0, off_dropped = 0, off_picked = 0, off_id = 0, off_count = 0;
+        for (int i = 0; plausible_obj(ditems) && i < dsize && i < 1000 && nd < 80; i++) {
+            void* d = nullptr;
+            if (!safe_read(&d, (char*)ditems + 0x20 + (size_t)i * 8, sizeof(d)) || !plausible_obj(d)) continue;
+            if (!off_pos) {
+                void* c = safe_class_of(d);
+                void* f1 = find_field_in_chain(c, "pos");
+                void* f2 = find_field_in_chain(c, "dropped");
+                void* f3 = find_field_in_chain(c, "picked");
+                void* f4 = find_field_in_chain(c, "id");
+                void* f5 = find_field_in_chain(c, "count");
+                if (!f1 || !f2 || !f3 || !f4 || !f5) break;
+                off_pos = g_api.field_get_offset(f1);
+                off_dropped = g_api.field_get_offset(f2);
+                off_picked = g_api.field_get_offset(f3);
+                off_id = g_api.field_get_offset(f4);
+                off_count = g_api.field_get_offset(f5);
+            }
+            uint8_t dropped = 0, picked = 0;
+            safe_read(&dropped, (char*)d + off_dropped, 1);
+            safe_read(&picked, (char*)d + off_picked, 1);
+            if (!dropped || picked) continue;
+            float p[3] = {0, 0, 0};
+            uint32_t item = 0, cnt = 0;
+            if (!safe_read(p, (char*)d + off_pos, sizeof(p))) continue;
+            float dx = p[0] - me[0], dz = p[2] - me[2];
+            if (dx * dx + dz * dz > radius * radius) continue;
+            safe_read(&item, (char*)d + off_id, 4);
+            safe_read(&cnt, (char*)d + off_count, 4);
+            std::snprintf(buf, sizeof(buf), "%s[%.1f,%.1f,%u,%u]", nd ? "," : "", p[0], p[2], item, cnt);
+            j += buf;
+            nd++;
+        }
+    }
+    j += "]}";
+    return j;
+}
+
 // Processa um comando (tag + corpo) e devolve o JSON da resposta. CONN e
 // desconhecidos caem no estado do jogador.
 std::string dispatch_command(const std::string& tag, const std::string& body) {
@@ -2139,6 +2310,10 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
             first = false;
         }
         return out + "}}";
+    }
+    if (tag == "ENTS" && g_ready) {
+        std::lock_guard<std::mutex> lk(g_read_mu);
+        return read_entities_json((float)std::atof(body.c_str()));
     }
     if (tag == "GETP" && g_boot_ready) {
         // GETP <Classe> [campo|getter ...] <getter|campo>: como o OBJV, segue o

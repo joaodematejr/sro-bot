@@ -4,6 +4,7 @@ import { contextBridge, ipcRenderer } from "electron";
 contextBridge.exposeInMainWorld("sro", {
   setup: () => ipcRenderer.invoke("engine:setup"),
   player: () => ipcRenderer.invoke("engine:player"),
+  map: () => ipcRenderer.invoke("engine:map"),
   inject: () => ipcRenderer.invoke("engine:inject"),
   restore: () => ipcRenderer.invoke("engine:restore"),
   gameForeground: () => ipcRenderer.invoke("engine:gamefg"),

@@ -53,6 +53,7 @@ declare global {
     sro: {
       setup: () => Promise<{ serial: string; port: number }>;
       player: () => Promise<PlayerState>;
+      map: () => Promise<MapView | null>;
       inject: () => Promise<{ ok: boolean; erro?: string }>;
       restore: () => Promise<{ ok: boolean; erro?: string }>;
       gameForeground: () => Promise<boolean>;
@@ -2705,14 +2706,266 @@ function wire(): void {
       document.querySelectorAll(".tab").forEach((t) => t.classList.remove("tab-active"));
       tab.classList.add("tab-active");
       const name = tab.dataset.tab!;
-      for (const t of ["status", "stats", "activities", "tools", "ai"]) {
+      for (const t of ["status", "map", "stats", "activities", "tools", "ai"]) {
         $(`tab-${t}`).classList.toggle("hidden", t !== name);
       }
     });
   });
 }
 
+// ---- Mapa ao vivo (aba Mapa) ----
+// O char no centro, norte (z maior) pra cima. Le pelo engine:map so com a aba
+// aberta e o jogo conectado, uma leitura por vez: 1 s com o ENTS; 20 s na leitura
+// reserva pelo GETP (engine antigo: ~280 consultas, 13 s medidos em Jangan), pra
+// nao pesar no Treino.
+
+type MapKind = "boss" | "elite" | "monster" | "party" | "player" | "pet" | "npc" | "other";
+interface MapView {
+  me: { x: number; z: number; id: number };
+  target: number;
+  ents: { kind: MapKind; id: number; x: number; z: number; level: number; dead: boolean; hp: number; maxHp: number; name: string }[];
+  drops: { x: number; z: number; item: number; count: number }[];
+  source: "ents" | "getp";
+  scene: number;
+  sceneName: string;
+  channel?: number;
+}
+
+const MAP_COLORS: Record<MapKind, string> = {
+  boss: "#a855f7",
+  elite: "#f97316",
+  monster: "#ef4444",
+  party: "#22c55e",
+  player: "#e8c35a",
+  pet: "#8b94a3",
+  npc: "#8b94a3",
+  other: "#4b5563",
+};
+const MAP_ZOOMS = [1.5, 2, 3, 4, 5, 7, 10, 14];
+let mapZoom = 4;
+let mapLast: MapView | null = null;
+let mapBusy = false;
+let mapNextAt = 0;
+
+function mapVisible(): boolean {
+  return !$("tab-map").classList.contains("hidden");
+}
+
+function mapPxPerM(): number {
+  return MAP_ZOOMS[mapZoom];
+}
+
+function drawMap(v: MapView | null): void {
+  const cv = $("map-canvas") as HTMLCanvasElement;
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth;
+  const h = cv.clientHeight || 560;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+  }
+  const g = cv.getContext("2d");
+  if (!g) return;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = "#0b0d10";
+  g.fillRect(0, 0, w, h);
+  const ppm = mapPxPerM();
+  $("map-scale").textContent = `escala: 10 m = ${Math.round(10 * ppm)} px`;
+  if (!v) {
+    g.fillStyle = "#8b94a3";
+    g.font = "13px sans-serif";
+    g.fillText("sem leitura: abra o jogo e entre no mundo", 16, 28);
+    return;
+  }
+  const cx = w / 2;
+  const cy = h / 2;
+  const sx = (x: number) => cx + (x - v.me.x) * ppm;
+  const sy = (z: number) => cy - (z - v.me.z) * ppm;
+  // Grade a cada 10 m (mais forte a cada 50 m), presa ao mundo.
+  const step = ppm < 2.5 ? 50 : 10;
+  for (let k = Math.floor((v.me.x - w / 2 / ppm) / step) * step; k <= v.me.x + w / 2 / ppm; k += step) {
+    g.strokeStyle = k % 50 === 0 ? "#1d222b" : "#14181e";
+    g.beginPath();
+    g.moveTo(sx(k), 0);
+    g.lineTo(sx(k), h);
+    g.stroke();
+  }
+  for (let k = Math.floor((v.me.z - h / 2 / ppm) / step) * step; k <= v.me.z + h / 2 / ppm; k += step) {
+    g.strokeStyle = k % 50 === 0 ? "#1d222b" : "#14181e";
+    g.beginPath();
+    g.moveTo(0, sy(k));
+    g.lineTo(w, sy(k));
+    g.stroke();
+  }
+  // Pontos de caca salvos neste mapa, com o raio.
+  for (const sp of trainSpots.filter((s) => s.scene === v.scene)) {
+    const r = (sp.range && sp.range > 0 ? sp.range : 150) * ppm;
+    g.strokeStyle = "rgba(45,212,191,0.55)";
+    g.fillStyle = "rgba(45,212,191,0.06)";
+    g.beginPath();
+    g.arc(sx(sp.x), sy(sp.z), r, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    g.fillStyle = "#2dd4bf";
+    g.fillRect(sx(sp.x) - 2, sy(sp.z) - 2, 4, 4);
+  }
+  // Itens no chao.
+  g.fillStyle = "#fde047";
+  for (const d of v.drops) {
+    g.beginPath();
+    g.arc(sx(d.x), sy(d.z), 2.5, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Linha ate o alvo.
+  const tgt = v.target ? v.ents.find((e) => e.id === v.target) : undefined;
+  if (tgt) {
+    g.strokeStyle = "rgba(239,68,68,0.5)";
+    g.setLineDash([4, 4]);
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.lineTo(sx(tgt.x), sy(tgt.z));
+    g.stroke();
+    g.setLineDash([]);
+  }
+  // Entidades: mortos por baixo e apagados.
+  const order = [...v.ents].sort((a, b) => Number(b.dead) - Number(a.dead));
+  g.font = "11px sans-serif";
+  g.textAlign = "center";
+  for (const e of order) {
+    const x = sx(e.x);
+    const y = sy(e.z);
+    if (x < -20 || y < -20 || x > w + 20 || y > h + 20) continue;
+    const big = e.kind === "boss" ? 7 : e.kind === "elite" ? 6 : e.kind === "npc" || e.kind === "pet" || e.kind === "other" ? 3.5 : 5;
+    g.globalAlpha = e.dead ? 0.25 : 1;
+    g.fillStyle = MAP_COLORS[e.kind];
+    g.beginPath();
+    g.arc(x, y, big, 0, Math.PI * 2);
+    g.fill();
+    if (!e.dead && e.maxHp > 0 && (e.kind === "monster" || e.kind === "elite" || e.kind === "boss")) {
+      const bw = 18;
+      g.fillStyle = "#262d38";
+      g.fillRect(x - bw / 2, y + big + 2, bw, 3);
+      g.fillStyle = "#ef4444";
+      g.fillRect(x - bw / 2, y + big + 2, (bw * Math.max(0, Math.min(e.hp, e.maxHp))) / e.maxHp, 3);
+    }
+    const isT = e.id === v.target;
+    const label = e.kind === "player" || e.kind === "party" || e.kind === "boss" || e.kind === "elite" || isT || (e.kind === "npc" && ppm >= 7);
+    if (label && !e.dead) {
+      g.fillStyle = e.kind === "party" ? "#22c55e" : e.kind === "player" ? "#e8c35a" : "#e5e7eb";
+      const lv = e.level > 0 ? `Lv${e.level} ` : "";
+      g.fillText(`${lv}${e.name}`.trim(), x, y - big - 4);
+    } else if (!e.dead && ppm >= 7 && e.level > 0) {
+      g.fillStyle = "#8b94a3";
+      g.fillText(String(e.level), x, y - big - 3);
+    }
+    g.globalAlpha = 1;
+    if (isT) {
+      const r = big + 6;
+      g.strokeStyle = "#ef4444";
+      g.lineWidth = 2;
+      for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        g.beginPath();
+        g.moveTo(x + dx * r, y + dy * (r - 5));
+        g.lineTo(x + dx * r, y + dy * r);
+        g.lineTo(x + dx * (r - 5), y + dy * r);
+        g.stroke();
+      }
+      g.lineWidth = 1;
+    }
+  }
+  // Voce, no centro.
+  g.fillStyle = "#3b82f6";
+  g.strokeStyle = "#e5e7eb";
+  g.lineWidth = 2;
+  g.beginPath();
+  g.arc(cx, cy, 7, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+  g.lineWidth = 1;
+  // Radar no canto: tudo ate 120 m.
+  const rr = 58;
+  const rx = w - rr - 12;
+  const ry = rr + 12;
+  g.fillStyle = "rgba(17,20,25,0.85)";
+  g.strokeStyle = "rgba(45,212,191,0.5)";
+  g.beginPath();
+  g.arc(rx, ry, rr, 0, Math.PI * 2);
+  g.fill();
+  g.stroke();
+  g.beginPath();
+  g.arc(rx, ry, rr / 2, 0, Math.PI * 2);
+  g.stroke();
+  const rs = rr / 120;
+  for (const e of v.ents) {
+    if (e.dead || e.kind === "npc" || e.kind === "pet" || e.kind === "other") continue;
+    const dx = (e.x - v.me.x) * rs;
+    const dy = -(e.z - v.me.z) * rs;
+    if (dx * dx + dy * dy > rr * rr) continue;
+    g.fillStyle = MAP_COLORS[e.kind];
+    g.fillRect(rx + dx - 1.5, ry + dy - 1.5, 3, 3);
+  }
+  g.fillStyle = "#3b82f6";
+  g.fillRect(rx - 2, ry - 2, 4, 4);
+  g.textAlign = "start";
+  // Faixa de cima.
+  const alive = v.ents.filter((e) => !e.dead);
+  const mobs = alive.filter((e) => e.kind === "monster" || e.kind === "elite" || e.kind === "boss").length;
+  const players = alive.filter((e) => e.kind === "player").length;
+  const party = alive.filter((e) => e.kind === "party").length;
+  $("map-title").textContent = `${v.sceneName || `cena ${v.scene}`}${v.channel ? ` · canal ${v.channel}` : ""}`;
+  $("map-info").textContent = `${mobs} monstro(s) · ${players} jogador(es) · ${party} da party`
+    + (tgt ? ` · alvo: ${tgt.name || "monstro"}${tgt.level ? ` Lv${tgt.level}` : ""}` : "")
+    + (v.source === "getp" ? " · leitura lenta (engine sem ENTS: sem HP nem itens no chão)" : "");
+}
+
+async function mapTick(): Promise<void> {
+  if (!mapVisible() || mapBusy || Date.now() < mapNextAt) return;
+  const live = $("map-live");
+  if (!gameOpen) {
+    live.textContent = "parado";
+    live.className = "pill bg-ink-600 text-muted";
+    drawMap(mapLast);
+    return;
+  }
+  mapBusy = true;
+  try {
+    const v = await window.sro.map();
+    mapLast = v;
+    live.textContent = v ? "ao vivo" : "sem leitura";
+    live.className = v ? "pill bg-ok/20 text-ok" : "pill bg-ink-600 text-muted";
+    mapNextAt = Date.now() + (v?.source === "getp" ? 20000 : 1000);
+    drawMap(v);
+  } catch {
+    mapNextAt = Date.now() + 4000;
+  } finally {
+    mapBusy = false;
+  }
+}
+
+function setupMap(): void {
+  try {
+    const z = Number(localStorage.getItem("mapZoom"));
+    if (Number.isInteger(z) && z >= 0 && z < MAP_ZOOMS.length) mapZoom = z;
+  } catch {
+    /* sem localStorage: zoom padrao */
+  }
+  const zoom = (d: number) => {
+    mapZoom = Math.max(0, Math.min(MAP_ZOOMS.length - 1, mapZoom + d));
+    try {
+      localStorage.setItem("mapZoom", String(mapZoom));
+    } catch {
+      /* ignora */
+    }
+    drawMap(mapLast);
+  };
+  $("map-zoom-in").addEventListener("click", () => zoom(1));
+  $("map-zoom-out").addEventListener("click", () => zoom(-1));
+  window.addEventListener("resize", () => mapVisible() && drawMap(mapLast));
+  setInterval(() => void mapTick(), 250);
+}
+
 wire();
+setupMap();
 setConn("off", "desconectado");
 log("pronto. Iniciar injeta e sobe o jogo (marque Auto-login pra logar sozinho). Parar restaura.");
 

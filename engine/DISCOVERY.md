@@ -490,6 +490,28 @@ Injetar o engine (ver README), deixar na tela de titulo, e puxar
 `/data/data/com.silkroad.mb/files/sro_dump.txt`. O engine espera o XMainClient
 carregar antes de despejar.
 
+## Entidades em volta (mapa ao vivo), 2026-11-11
+
+- `XEntityMgr GetAll` (List<XEntity>): `_eEntity_Type` (bits do `EnitityType`),
+  `_correctedPosition` (x em +0, z em +8), `get_ID`, `get_IsDead`, `get_Name`,
+  `get_Attributes get_Level`; HP por `XAttributes.GetAttr` (2011 MaxHP, 2012 HP).
+- Bits: Role 0x2, Player 0x4 (o proprio char), Enemy 0x8, Opposer 0x10, Boss 0x20,
+  Puppet 0x40, Elite 0x80, Npc 0x100, Affiliate 0x2000, Mount 0x4000, Spirit 0x10000,
+  Scavenger 0x20000.
+- **Pets tem o bit de inimigo**: lido em Jangan, pet de combate (Elite Penguin, Gray
+  Wolf, o Night Fang do char principal) = 0x10019 (Spirit + Enemy + Opposer) e pet
+  de coleta (Cat, Brownie, Myowon) = 0x20019 (Scavenger + Enemy + Opposer). Jogador
+  = 0x3, o char = 0x7. Contar "inimigo" pelo `get_IsEnemy` conta os pets (o do
+  proprio char a 0 m): descontar Spirit e Scavenger.
+- Alvo do auto-play: `XAIComponent._target` (o `_ai` do jogador fica em +0xd8).
+- Itens no chao: `XLevelDoodadMgr._doodads` (List<XLevelDoodad>: `pos`, `id` =
+  item, `count`, `dropped`, `picked`); 400 registros em Jangan, so os `dropped` e
+  nao `picked` sao itens no chao.
+- Nome do mapa: `Localization Localize:"SceneList_Comment_<cena>"` (100001 Jangan,
+  100003 Taklamakan). Nome de NPC vem como chave (`XNpcList_NPCName_200` = "Jowi").
+- Pelo GETP a leitura de ~50 entidades leva ~13 s (~45 ms por consulta, conexao
+  nova a cada uma): por isso o comando `ENTS`, que faz tudo numa consulta.
+
 ## Cartoes de privilegio (Premium Shop > Privilege), 2026-11-11
 
 - Tabela `XWelfareDocument get_PayMemberTable Table` (array: `GetValue:i`): 1
