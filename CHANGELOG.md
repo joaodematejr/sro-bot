@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** atividade **Álbum de Cards** (Atividades > Álbum de Cards), por metodo e rodando mesmo cacando: ativa as combinacoes prontas, sobe a estrela do grupo quando completa e, se marcado, quebra so as cartas que sobram acima do total que ainda vai usar ate a estrela maxima de todos os grupos. Escolhe as raridades que podem ser quebradas (por padrao so C e B) e o grupo alvo; "Analisar cards" mostra o que faria sem mexer em nada. Os testes do modulo passam a rodar no `npm test` e no CI.
+
 ## [0.144.0] - 2026-11-12
 
 - **App:** o painel do Continental mostra a hora da proxima rodada de dados (e da passada de baus, quando vem antes). Entre as rodadas de 12 h a passada de baus nao rola dado, de proposito (a caveira abre luta no meio da caca), e isso parecia travado.
