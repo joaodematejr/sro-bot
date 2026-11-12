@@ -118,6 +118,31 @@ export function chestDelayMs(unlockLeftSec: number | null): number {
   return Math.min(CHEST_MAX_MS, Math.max(CHEST_MIN_MS, unlockLeftSec * 1000 + 60000));
 }
 
+// A passada de baus tambem rola os dados quando o char nao esta cacando: sem o
+// loop do Treino (nem comecando), fora de combate e sem lista de chars (trocar de
+// char reinicia o jogo). So depois de recarregar ao menos um dado desde a ultima
+// rodada, pra nao abrir o tabuleiro a toa.
+export const DICE_REGEN_MS = 90 * 60 * 1000;
+
+export interface ChestPassState {
+  training: boolean; // loop do Treino rodando ou comecando
+  inCombat: boolean;
+  multiChar: boolean;
+  sinceRoundMs: number; // tempo desde a ultima rodada de dados
+}
+
+export function chestPassRolls(s: ChestPassState): boolean {
+  return !s.training && !s.inCombat && !s.multiChar && s.sinceRoundMs >= DICE_REGEN_MS;
+}
+
+// Agenda mostrada no painel do Continental. diceAt <= now = rodada na proxima
+// checagem; a passada de baus so aparece se vier antes da rodada de dados.
+export function contScheduleText(diceAt: number, chestAt: number, now: number, fmt: (t: number) => string): string {
+  const dice = `próxima rodada de dados: ${diceAt <= now ? "agora" : fmt(diceAt)}`;
+  if (diceAt <= now || chestAt >= diceAt) return dice;
+  return `${dice} · passada de baús: ${chestAt <= now ? "agora" : fmt(chestAt)}`;
+}
+
 export const SLOT_COUNT = 3;
 export const STATE_READY_TO_MOVE = 2;
 export const STATE_EVENT = 8;

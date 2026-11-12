@@ -381,6 +381,51 @@
                   <span class="text-xs text-muted">Special Chest e "Open now" são pagos: o bot não usa</span>
                 </div>
               </div>
+              <div class="panel p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-sm font-semibold">Álbum de Cards</div>
+                    <div class="text-xs text-muted">ativa combinações prontas, sobe estrela do grupo e calcula o limite total até a estrela máxima antes de quebrar sobras (funciona mesmo caçando)</div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer select-none"><input type="checkbox" id="act-cards" class="accent-gold w-4 h-4" /> Ativa</label>
+                    <span id="ca-status" class="pill bg-ink-600 text-muted">parado</span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-300">
+                  <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="ca-activate" class="accent-gold w-4 h-4" checked /> Ativar combinações prontas</label>
+                  <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="ca-upgrade" class="accent-gold w-4 h-4" checked /> Subir estrela do grupo quando completar</label>
+                  <label class="flex items-center gap-2 cursor-pointer select-none md:col-span-2"><input type="checkbox" id="ca-break" class="accent-gold w-4 h-4" /> Quebrar cards excedentes (só o que sobra acima do total necessário até a estrela máxima)</label>
+                  <div class="flex flex-wrap items-center gap-3 md:col-span-2">
+                    <span class="text-xs text-muted">Raridades pra quebrar:</span>
+                    <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" id="ca-q-normal" class="accent-gold w-4 h-4" checked /> C (Normal)</label>
+                    <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" id="ca-q-blue" class="accent-gold w-4 h-4" checked /> B (Azul)</label>
+                    <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" id="ca-q-purple" class="accent-gold w-4 h-4" /> A (Roxo)</label>
+                    <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" id="ca-q-gold" class="accent-gold w-4 h-4" /> S (Ouro)</label>
+                    <label class="flex items-center gap-1 cursor-pointer select-none"><input type="checkbox" id="ca-q-red" class="accent-gold w-4 h-4" /> L (Vermelho)</label>
+                  </div>
+                  <label class="flex items-center gap-2 md:col-span-2">
+                    Grupo alvo
+                    <select id="ca-group" class="bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100">
+                      <option value="0">Todos os grupos (1 a 7)</option>
+                      <option value="1">1 - Beginning</option>
+                      <option value="2">2 - Discover</option>
+                      <option value="3">3 - Master</option>
+                      <option value="4">4 - Hell</option>
+                      <option value="5">5 - Convergence</option>
+                      <option value="6">6 - Revelation</option>
+                      <option value="7">7 - New Origin</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button id="btn-ca-save" class="btn btn-gold">Salvar config</button>
+                  <button id="btn-ca-preview" class="btn">Analisar cards</button>
+                  <button id="btn-ca-run" class="btn">Rodar agora</button>
+                  <span class="text-xs text-muted">soma os custos de todas as estrelas restantes pra nunca quebrar carta que ainda vai usar</span>
+                </div>
+                <pre id="ca-preview" class="hidden text-[11px] font-mono text-gray-300 whitespace-pre-wrap max-h-40 overflow-y-auto bg-ink-900/50 border border-line rounded p-2"></pre>
+              </div>
             </div>
 
             <!-- Aba IA (opcional; nao mexe no resto do bot) -->

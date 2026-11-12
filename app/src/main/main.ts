@@ -31,6 +31,8 @@ import type { FirmConfig } from "../controller/firm";
 import { runFirm, stopFirm } from "./firm";
 import type { GuildConfig } from "../controller/guild";
 import { runGuild, stopGuild } from "./guild";
+import type { CardAlbumConfig } from "../controller/cardalbum";
+import { previewCardAlbum, runCardAlbum, setCardAlbumDir, stopCardAlbum } from "./cardalbum";
 import { runActChests } from "./actchest";
 import { runFreebies } from "./freebies";
 import { runGuildHallCheck, runQigongAccept, runQigongRequest, setQigongDir, setQigongObjvReader } from "./qigong";
@@ -329,6 +331,21 @@ ipcMain.handle("engine:guild", async (_e, cfg: GuildConfig) => {
 
 ipcMain.handle("engine:guildstop", async () => {
   stopGuild();
+});
+
+// Album de cards: analisa sobras seguras e ativa/sobe/quebra excedentes.
+ipcMain.handle("engine:cardalbumpreview", async (_e, cfg: CardAlbumConfig) => {
+  const push = (m: string) => win?.webContents.send("sro:log", "[cards] " + m);
+  return previewCardAlbum("127.0.0.1", HOST_PORT, cfg, push);
+});
+
+ipcMain.handle("engine:cardalbum", async (_e, cfg: CardAlbumConfig) => {
+  const push = (m: string) => win?.webContents.send("sro:log", "[cards] " + m);
+  return runCardAlbum("127.0.0.1", HOST_PORT, cfg, push);
+});
+
+ipcMain.handle("engine:cardalbumstop", async () => {
+  stopCardAlbum();
 });
 
 // Baus de atividade diaria: pega os liberados (so metodo, com a caca ligada).
@@ -682,6 +699,7 @@ setCredentialsDir(app.getPath("userData"));
 setTelegramDir(app.getPath("userData"));
 setBoosterDir(app.getPath("userData"));
 setQigongDir(app.getPath("userData"));
+setCardAlbumDir(app.getPath("userData"));
 setObjvReader(() => readGameFile(SERIAL, "sro_objv.txt"));
 setQigongObjvReader(() => readGameFile(SERIAL, "sro_objv.txt"));
 setAttrReader(() => readGameFile(SERIAL, "sro_attrvals.txt"));

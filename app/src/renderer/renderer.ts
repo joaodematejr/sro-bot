@@ -104,6 +104,16 @@ declare global {
       stopFirm: () => Promise<void>;
       runGuild: (cfg: GuildUiConfig) => Promise<{ ok: boolean; erro?: string; done?: number }>;
       stopGuild: () => Promise<void>;
+      previewCardAlbum: (cfg: CardAlbumUiConfig) => Promise<{
+        ok: boolean;
+        erro?: string;
+        surplus?: CardSurplusUi[];
+        readySets?: number;
+        upgradeGroups?: number;
+        groups?: { groupId: number; name?: string; currentStar: number; maxStar: number; actionNum: number; totalSets: number }[];
+      }>;
+      runCardAlbum: (cfg: CardAlbumUiConfig) => Promise<{ ok: boolean; erro?: string; activated?: number; upgraded?: number; broken?: number; surplus?: CardSurplusUi[] }>;
+      stopCardAlbum: () => Promise<void>;
       runActChests: () => Promise<{ ok: boolean; erro?: string; done?: number; reason?: string }>;
       runFreebies: (donate: boolean) => Promise<{ ok: boolean; erro?: string; done?: number; reason?: string }>;
       qigongAccept: () => Promise<{ ok: boolean; accepted?: string; erro?: string }>;
@@ -739,6 +749,156 @@ async function runGuildActivityInner(): Promise<boolean> {
     log("guild utilities falhou: " + (r.erro ?? "erro"));
   }
   return r.ok;
+}
+
+// ---- Album de Cards ----
+
+interface CardSurplusUi {
+  cardId: number;
+  name?: string;
+  groupId: number;
+  quality: string;
+  owned: number;
+  neededTotal: number;
+  surplus: number;
+}
+
+interface CardAlbumUiConfig {
+  activateSets: boolean;
+  upgradeStars: boolean;
+  breakDuplicates: boolean;
+  allowedQualities: string[];
+  targetGroupId?: number;
+}
+
+const CARDALBUM_DEFAULT: CardAlbumUiConfig = {
+  activateSets: true,
+  upgradeStars: true,
+  breakDuplicates: false,
+  allowedQualities: ["normal", "blue"],
+  targetGroupId: 0,
+};
+
+const CARD_QUALITY_ELS: [string, string][] = [
+  ["ca-q-normal", "normal"],
+  ["ca-q-blue", "blue"],
+  ["ca-q-purple", "purple"],
+  ["ca-q-gold", "gold"],
+  ["ca-q-red", "red"],
+];
+
+function readCardAlbumUi(): CardAlbumUiConfig {
+  const allowedQualities = CARD_QUALITY_ELS.filter(([id]) => ($(id) as HTMLInputElement).checked).map(([, q]) => q);
+  const g = parseInt(($( "ca-group" ) as HTMLSelectElement).value, 10);
+  return {
+    activateSets: ($("ca-activate") as HTMLInputElement).checked,
+    upgradeStars: ($("ca-upgrade") as HTMLInputElement).checked,
+    breakDuplicates: ($("ca-break") as HTMLInputElement).checked,
+    allowedQualities,
+    targetGroupId: Number.isFinite(g) && g > 0 ? g : undefined,
+  };
+}
+
+function applyCardAlbumUi(c: CardAlbumUiConfig): void {
+  ($("ca-activate") as HTMLInputElement).checked = c.activateSets;
+  ($("ca-upgrade") as HTMLInputElement).checked = c.upgradeStars;
+  ($("ca-break") as HTMLInputElement).checked = c.breakDuplicates;
+  const qset = new Set(c.allowedQualities ?? CARDALBUM_DEFAULT.allowedQualities);
+  for (const [id, q] of CARD_QUALITY_ELS) ($ (id) as HTMLInputElement).checked = qset.has(q);
+  ($("ca-group") as HTMLSelectElement).value = String(c.targetGroupId ?? 0);
+}
+
+function loadCardAlbumConfig(): CardAlbumUiConfig {
+  try {
+    const raw = localStorage.getItem("cardAlbumConfig");
+    if (raw) return { ...CARDALBUM_DEFAULT, ...JSON.parse(raw) };
+  } catch {
+    /* localStorage pode falhar; usa o default */
+  }
+  return { ...CARDALBUM_DEFAULT };
+}
+
+function saveCardAlbumConfig(): void {
+  try {
+    localStorage.setItem("cardAlbumConfig", JSON.stringify(readCardAlbumUi()));
+  } catch {
+    /* ignora */
+  }
+}
+
+function setCardAlbumStatus(text: string, cls: string): void {
+  const el = $("ca-status");
+  el.textContent = text;
+  el.className = "pill " + cls;
+}
+
+const CARDALBUM_EVERY_MS = 30 * 60 * 1000;
+const CARDALBUM_RETRY_MS = 5 * 60 * 1000;
+let cardAlbumNextAt = 0;
+let cardAlbumBusy = false;
+
+async function previewCardAlbumUi(): Promise<void> {
+  if (cardAlbumBusy) return;
+  cardAlbumBusy = true;
+  const box = $("ca-preview");
+  setCardAlbumStatus("analisando", "bg-ink-600 text-warn");
+  try {
+    const r = await window.sro.previewCardAlbum(readCardAlbumUi());
+    if (!r.ok) {
+      setCardAlbumStatus("falhou", "bg-ink-600 text-danger");
+      log("cards: analise falhou: " + (r.erro ?? "erro"));
+      return;
+    }
+    setCardAlbumStatus("pronto", "bg-ink-600 text-ok");
+    const lines: string[] = [];
+    for (const g of r.groups ?? []) {
+      lines.push(`Grupo ${g.groupId} (${g.name ?? "-"}): ${g.currentStar}* / ${g.maxStar}* | ${g.actionNum}/${g.totalSets} combinacoes`);
+    }
+    const surplus = r.surplus ?? [];
+    lines.push("");
+    lines.push(`Prontas: ${r.readySets ?? 0} combinacao(oes), ${r.upgradeGroups ?? 0} upgrade(s) de estrela`);
+    if (!surplus.length) {
+      lines.push("Sobras seguras pra quebrar nas raridades marcadas: nenhuma.");
+    } else {
+      lines.push(`Sobras seguras (${surplus.length} tipo(s)):`);
+      for (const s of surplus) {
+        lines.push(`  +${s.surplus}x ${s.name ?? `card ${s.cardId}`} (${s.cardId}, ${s.quality}) [tem ${s.owned}, precisa ${s.neededTotal}]`);
+      }
+    }
+    box.textContent = lines.join("\n");
+    box.classList.remove("hidden");
+  } finally {
+    cardAlbumBusy = false;
+  }
+}
+
+async function runCardAlbumActivityInner(): Promise<boolean> {
+  log("Album de Cards: executando...");
+  setCardAlbumStatus("rodando", "bg-ink-600 text-warn");
+  const r = await window.sro.runCardAlbum(readCardAlbumUi());
+  if (r.ok) {
+    setCardAlbumStatus("concluido", "bg-ink-600 text-ok");
+    log(`Album de Cards concluido (${r.activated ?? 0} ativada(s), ${r.upgraded ?? 0} estrela(s), ${r.broken ?? 0} quebrado(s)).`);
+  } else if (r.erro === "parado") {
+    setCardAlbumStatus("parado", "bg-ink-600 text-muted");
+  } else {
+    setCardAlbumStatus("falhou", "bg-ink-600 text-danger");
+    log("cards falhou: " + (r.erro ?? "erro"));
+  }
+  return r.ok;
+}
+
+async function maybeRunCardAlbum(): Promise<void> {
+  if (!polling || !isChecked("act-cards") || cardAlbumBusy || watchdogBusy || loggingIn || outOfWorldSince !== 0) return;
+  if (Date.now() < cardAlbumNextAt) return;
+  cardAlbumBusy = true;
+  cardAlbumNextAt = Date.now() + CARDALBUM_EVERY_MS;
+  try {
+    const ok = await runCardAlbumActivity();
+    if (!ok) cardAlbumNextAt = Date.now() + CARDALBUM_RETRY_MS;
+  } finally {
+    cardAlbumBusy = false;
+  }
 }
 
 // ---- Baus de atividade diaria ----
@@ -1623,7 +1783,7 @@ async function runEnabledActivities(): Promise<void> {
   // Evita rodar em dobro (watchdog + Iniciar bot). Com o Treino ja rodando, as
   // diarias pendentes ficam pro maybeRunDailies, que pausa o loop antes.
   if (activitiesRunning || trainRunning) return;
-  if (!isChecked("act-tower") && !isChecked("act-cont") && !isChecked("act-guild") && !isChecked("act-firm") && !isChecked("act-train")) return;
+  if (!isChecked("act-tower") && !isChecked("act-cont") && !isChecked("act-guild") && !isChecked("act-firm") && !isChecked("act-cards") && !isChecked("act-train")) return;
   activitiesRunning = true;
   try {
     log("aguardando o char entrar em mundo...");
@@ -1641,6 +1801,11 @@ async function runEnabledActivities(): Promise<void> {
     await runOncePerDay("act-guild", "Guild utilities", runGuildActivity);
     if (!polling) return;
     await runOncePerDay("act-firm", "Firm", runFirmActivity);
+    if (!polling) return;
+    if (isChecked("act-cards")) {
+      cardAlbumNextAt = 0;
+      await maybeRunCardAlbum();
+    }
     actChestNextAt = 0;
   } finally {
     activitiesRunning = false;
@@ -1654,6 +1819,7 @@ async function stopActivities(): Promise<void> {
   await window.sro.stopContinental();
   await window.sro.stopFirm();
   await window.sro.stopGuild();
+  await window.sro.stopCardAlbum();
   if (isChecked("act-train")) await runTrainActivity(false);
 }
 
@@ -1692,6 +1858,9 @@ async function onActivityToggle(id: string): Promise<void> {
     if (await waitInWorld()) {
       if (polling && (await runGuildActivity())) markDone("act-guild");
     }
+  } else if (id === "act-cards" && on) {
+    cardAlbumNextAt = 0;
+    void maybeRunCardAlbum();
   }
 }
 
@@ -1813,6 +1982,7 @@ async function measureExp(label: string, fn: () => Promise<boolean>): Promise<bo
 
 const runFirmActivity = (): Promise<boolean> => measureExp("Firm", runFirmActivityInner);
 const runGuildActivity = (): Promise<boolean> => measureExp("Guild utilities", runGuildActivityInner);
+const runCardAlbumActivity = (): Promise<boolean> => measureExp("Album de Cards", runCardAlbumActivityInner);
 const runTowerActivity = (): Promise<boolean> => measureExp("Demon Locking Tower", runTowerActivityInner);
 const runContinentalActivity = (): Promise<boolean> => measureExp("Continental Exploration", runContinentalActivityInner);
 
@@ -2427,6 +2597,7 @@ function wire(): void {
   wireActivityFlag("act-freebies", "act-freebies");
   wireActivityFlag("fb-donate", "fb-donate");
   wireActivityFlag("act-qigong", "act-qigong");
+  wireActivityFlag("act-cards", "act-cards");
   applyQigongUi(loadQigongConfig());
   $("btn-qg-save").addEventListener("click", () => {
     saveQigongConfig();
@@ -2450,7 +2621,7 @@ function wire(): void {
   $("btn-vpn-off").addEventListener("click", () => void vpnAction(() => window.sro.vpnDisable()));
   $("btn-vpn-ping").addEventListener("click", () => void measureVpnPing());
   void refreshVpn();
-  window.setInterval(() => void maybeRunDailies().then(() => maybeRunContinental()).then(() => maybeRunChests()).then(() => maybeRunActChests()).then(() => maybeRunFreebies()).then(() => maybeRequestQigong()), 60 * 1000);
+  window.setInterval(() => void maybeRunDailies().then(() => maybeRunContinental()).then(() => maybeRunChests()).then(() => maybeRunActChests()).then(() => maybeRunFreebies()).then(() => maybeRunCardAlbum()).then(() => maybeRequestQigong()), 60 * 1000);
   // Mochila: confere a cada 2 min com o bot rodando e o char em mundo.
   window.setInterval(() => {
     if (polling && !watchdogBusy && !loggingIn && outOfWorldSince === 0) void checkBag().catch(() => undefined);
@@ -2479,6 +2650,20 @@ function wire(): void {
   $("btn-gu-save").addEventListener("click", () => {
     saveGuildConfig();
     log("config do Guild utilities salva.");
+  });
+
+  applyCardAlbumUi(loadCardAlbumConfig());
+  $("btn-ca-save").addEventListener("click", () => {
+    saveCardAlbumConfig();
+    log("config do Album de Cards salva.");
+  });
+  $("btn-ca-preview").addEventListener("click", () => void previewCardAlbumUi());
+  $("btn-ca-run").addEventListener("click", () => {
+    if (cardAlbumBusy) return;
+    cardAlbumBusy = true;
+    void runCardAlbumActivity().finally(() => {
+      cardAlbumBusy = false;
+    });
   });
 
   // Demon Locking Tower: carrega a config salva, salvar e rodar (por metodo).

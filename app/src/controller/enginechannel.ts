@@ -183,3 +183,142 @@ export class EngineChannel {
     }
   }
 }
+
+export interface PersistentEngineClient {
+  request: (tag: string, body?: string) => Promise<Record<string, unknown>>;
+  close: () => void;
+}
+
+// Conexao persistente para lotes grandes de leitura (ex.: album de cards),
+// evitando abrir milhares de sockets curtos e esgotar portas no Windows.
+// Rejeita frames OKAY e batimentos `{"player":...}`, igual ao protocolo.
+export function createEngineClient(host: string, port: number, timeoutMs = 5000): PersistentEngineClient {
+  let sock: net.Socket | null = null;
+  let buf = Buffer.alloc(0);
+  let closed = false;
+  let waitResolve: ((r: Record<string, unknown>) => void) | null = null;
+  let waitTimer: ReturnType<typeof setTimeout> | null = null;
+  let queue: Promise<void> = Promise.resolve();
+
+  const drop = (err: Record<string, unknown>) => {
+    if (waitTimer) {
+      clearTimeout(waitTimer);
+      waitTimer = null;
+    }
+    const r = waitResolve;
+    waitResolve = null;
+    try { sock?.destroy(); } catch { /* noop */ }
+    sock = null;
+    buf = Buffer.alloc(0);
+    if (r) r(err);
+  };
+
+  const connect = (): Promise<boolean> =>
+    new Promise((resolve) => {
+      if (closed) return resolve(false);
+      if (sock && !sock.destroyed) return resolve(true);
+      const s = new net.Socket();
+      let ok = false;
+      sock = s;
+      buf = Buffer.alloc(0);
+      const timer = setTimeout(() => {
+        if (!ok) {
+          try { s.destroy(); } catch { /* noop */ }
+          sock = null;
+          resolve(false);
+        }
+      }, timeoutMs);
+      s.on("data", (d) => {
+        buf = Buffer.concat([buf, typeof d === "string" ? Buffer.from(d) : d]);
+        while (buf.length >= HEADER) {
+          const t = buf.toString("ascii", 0, 4).replace(/\0+$/, "");
+          const len = buf.readUInt32LE(12);
+          if (buf.length < HEADER + len) break;
+          const b = buf.toString("utf-8", HEADER, HEADER + len);
+          buf = buf.subarray(HEADER + len);
+          if (t !== "RESP" || !waitResolve) continue;
+          let msg: Record<string, unknown>;
+          try {
+            const p = b ? JSON.parse(b) : {};
+            msg = typeof p === "object" && p ? (p as Record<string, unknown>) : {};
+          } catch {
+            msg = { ok: false, erro: "json invalido" };
+          }
+          const keys = Object.keys(msg);
+          if (keys.length === 1 && keys[0] === "player") continue;
+          if (waitTimer) {
+            clearTimeout(waitTimer);
+            waitTimer = null;
+          }
+          const r = waitResolve;
+          waitResolve = null;
+          r(msg);
+        }
+      });
+      s.on("error", (e) => {
+        clearTimeout(timer);
+        if (!ok) {
+          sock = null;
+          resolve(false);
+        } else {
+          drop({ ok: false, erro: String(e) });
+        }
+      });
+      s.on("close", () => {
+        clearTimeout(timer);
+        if (!ok) {
+          sock = null;
+          resolve(false);
+        } else {
+          drop({ ok: false, erro: "conexao fechada" });
+        }
+      });
+      s.connect(port, host, () => {
+        ok = true;
+        s.setNoDelay(true);
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+
+  const sendOne = async (tag: string, body: string): Promise<Record<string, unknown>> => {
+    if (closed) return { ok: false, erro: "cliente fechado" };
+    if (!(await connect()) || !sock) return { ok: false, erro: "falha ao conectar" };
+    return new Promise((resolve) => {
+      waitResolve = resolve;
+      waitTimer = setTimeout(() => drop({ ok: false, erro: "timeout" }), timeoutMs);
+      const b = Buffer.from(body, "utf-8");
+      const head = Buffer.alloc(HEADER);
+      head.write(tag.padEnd(4, "\0").slice(0, 4), 0, "ascii");
+      head.writeUInt32LE(b.length, 12);
+      try {
+        sock!.write(Buffer.concat([head, b]));
+      } catch (e) {
+        drop({ ok: false, erro: String(e) });
+      }
+    });
+  };
+
+  const request = (tag: string, body = ""): Promise<Record<string, unknown>> => {
+    const p = queue.then(async () => {
+      const r = await sendOne(tag, body);
+      // Em leituras, se o engine fechou o socket apos varias consultas, reconecta uma vez.
+      if (r.ok !== true && tag !== "SKIL" && !closed) {
+        return sendOne(tag, body);
+      }
+      return r;
+    });
+    queue = p.then(
+      () => undefined,
+      () => undefined,
+    );
+    return p;
+  };
+
+  const close = () => {
+    closed = true;
+    drop({ ok: false, erro: "cliente fechado" });
+  };
+
+  return { request, close };
+}

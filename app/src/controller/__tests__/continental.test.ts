@@ -36,6 +36,9 @@ import {
   chestDelayMs,
   CHEST_MAX_MS,
   CHEST_MIN_MS,
+  chestPassRolls,
+  contScheduleText,
+  DICE_REGEN_MS,
 } from "../continental";
 
 // Tabuleiro do Chinese na tela, dados carregados, pronto pra rolar, sem baus.
@@ -338,6 +341,23 @@ test("passada de baus: logo depois do cronometro, entre 10 min e 2 h", () => {
   assert.equal(chestDelayMs(0), CHEST_MIN_MS);
   assert.equal(chestDelayMs(28800), CHEST_MAX_MS); // laranja de 8 h: confere a cada 2 h
   assert.equal(chestDelayMs(null), CHEST_MAX_MS);
+});
+
+test("passada de baus rola os dados so com o char fora da caca e um dado recarregado", () => {
+  const idle = { training: false, inCombat: false, multiChar: false, sinceRoundMs: DICE_REGEN_MS };
+  assert.equal(chestPassRolls(idle), true);
+  assert.equal(chestPassRolls({ ...idle, training: true }), false); // no ponto: caveira abre luta
+  assert.equal(chestPassRolls({ ...idle, inCombat: true }), false);
+  assert.equal(chestPassRolls({ ...idle, multiChar: true }), false); // troca de char reinicia o jogo
+  assert.equal(chestPassRolls({ ...idle, sinceRoundMs: DICE_REGEN_MS - 1 }), false);
+});
+
+test("agenda do Continental mostra a rodada de dados e a passada de baus antes dela", () => {
+  const fmt = (t: number) => `t${t}`;
+  assert.equal(contScheduleText(500, 200, 100, fmt), "próxima rodada de dados: t500 · passada de baús: t200");
+  assert.equal(contScheduleText(500, 600, 100, fmt), "próxima rodada de dados: t500"); // baus depois: a rodada trata
+  assert.equal(contScheduleText(50, 200, 100, fmt), "próxima rodada de dados: agora");
+  assert.equal(contScheduleText(500, 0, 100, fmt), "próxima rodada de dados: t500 · passada de baús: agora");
 });
 
 // Continental no ponto com a caca ligada (sem ir pra cidade; a morte das 09:49

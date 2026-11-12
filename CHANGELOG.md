@@ -6,7 +6,15 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 - **App:** aba **Mapa**, a visao de cima ao vivo do que esta em volta do char: voce no centro (norte pra cima), monstros com nivel e barra de HP (elite e chefe em cores proprias), o alvo atual marcado e ligado por uma linha, outros jogadores e a party com nome e nivel, NPCs e pets, itens no chao, os pontos de caca salvos com o raio, grade em metros, zoom e radar de 120 m. O topo mostra o mapa, o canal e as contagens. So le com a aba aberta e o jogo conectado.
 - **Engine:** comando `ENTS`, que entrega numa consulta o jogador, o alvo do auto-play, as entidades ate 150 m (tipo, nivel, HP, nome em UTF-8) e os itens no chao. Sem ele (engine antigo), o mapa usa uma leitura mais lenta pelo GETP a cada 20 s, sem HP e sem itens no chao. O engine novo entra quando o jogo e reaberto pelo app.
-- **App:** avisos no celular pelo Telegram (Ferramentas > Avisos no Telegram). A pessoa cria um bot no @BotFather, cola o token (fica criptografado pelo Windows, nunca volta pra tela nem pro log), manda um "oi" pro bot e clica em Ligar: o app acha o chat sozinho e manda uma mensagem de teste. Dois grupos: "Problemas" (morte, queda da conexao, jogo congelado, falha ao reabrir, conta em outro aparelho, mochila cheia, EXP/h caiu), ligado por padrao, e "Fim de atividade" (treino e Continental concluidos). O mesmo aviso sai no maximo a cada 10 min, menos morte.
+
+## [0.144.0] - 2026-11-12
+
+- **App:** o painel do Continental mostra a hora da proxima rodada de dados (e da passada de baus, quando vem antes). Entre as rodadas de 12 h a passada de baus nao rola dado, de proposito (a caveira abre luta no meio da caca), e isso parecia travado.
+- **App:** com o char fora da caca (sem o Treino rodando, fora de combate e sem lista de chars), a passada de baus tambem rola os dados, desde que tenha recarregado ao menos um (1h30) desde a ultima rodada. Cacando, segue so baus como antes.
+
+## [0.143.0] - 2026-11-11
+
+- **App:** avisos no celular pelo Telegram (Ferramentas > Avisos no Telegram). A pessoa cria um bot no `@BotFather`, cola o token (fica criptografado pelo Windows, nunca volta pra tela nem pro log), manda um "oi" pro bot e clica em Ligar: o app acha o chat sozinho e manda uma mensagem de teste. Dois grupos: "Problemas" (morte, queda da conexao, jogo congelado, falha ao reabrir, conta em outro aparelho, mochila cheia, EXP/h caiu), ligado por padrao, e "Fim de atividade" (treino e Continental concluidos). O mesmo aviso sai no maximo a cada 10 min, menos morte.
 - **App:** pet de jogador (inclusive o do proprio char) deixa de contar como monstro. O jogo marca pet com o bit de inimigo, e ele entrava no "monstro a menos de 10 m" que segura a saida segura, na busca de alvo e no nivel da area. Agora o app le o tipo da entidade (`_eEntity_Type`) e ignora pet, montaria e invocacao, com o mesmo numero de leituras.
 
 ## [0.142.0] - 2026-11-11

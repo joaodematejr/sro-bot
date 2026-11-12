@@ -46,6 +46,21 @@ contextBridge.exposeInMainWorld("sro", {
   runGuild: (cfg: { signIn: string; chests: boolean; salary: boolean; redPacket: boolean; storeWeekly?: boolean }) =>
     ipcRenderer.invoke("engine:guild", cfg),
   stopGuild: () => ipcRenderer.invoke("engine:guildstop"),
+  previewCardAlbum: (cfg: {
+    activateSets: boolean;
+    upgradeStars: boolean;
+    breakDuplicates: boolean;
+    allowedQualities: string[];
+    targetGroupId?: number;
+  }) => ipcRenderer.invoke("engine:cardalbumpreview", cfg),
+  runCardAlbum: (cfg: {
+    activateSets: boolean;
+    upgradeStars: boolean;
+    breakDuplicates: boolean;
+    allowedQualities: string[];
+    targetGroupId?: number;
+  }) => ipcRenderer.invoke("engine:cardalbum", cfg),
+  stopCardAlbum: () => ipcRenderer.invoke("engine:cardalbumstop"),
   runActChests: () => ipcRenderer.invoke("engine:actchest"),
   runFreebies: (donate: boolean) => ipcRenderer.invoke("engine:freebies", donate),
   qigongAccept: () => ipcRenderer.invoke("engine:qigongaccept"),
