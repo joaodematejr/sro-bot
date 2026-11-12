@@ -4,8 +4,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
-- **App:** avisos no celular pelo Telegram (Ferramentas > Avisos no Telegram). A pessoa cria um bot no @BotFather, cola o token (fica criptografado pelo Windows, nunca volta pra tela nem pro log), manda um "oi" pro bot e clica em Ligar: o app acha o chat sozinho e manda uma mensagem de teste. Dois grupos: "Problemas" (morte, queda da conexao, jogo congelado, falha ao reabrir, conta em outro aparelho, mochila cheia, EXP/h caiu), ligado por padrao, e "Fim de atividade" (treino e Continental concluidos). O mesmo aviso sai no maximo a cada 10 min, menos morte.
+## [0.143.0] - 2026-11-11
 
+- **App:** avisos no celular pelo Telegram (Ferramentas > Avisos no Telegram). A pessoa cria um bot no @BotFather, cola o token (fica criptografado pelo Windows, nunca volta pra tela nem pro log), manda um "oi" pro bot e clica em Ligar: o app acha o chat sozinho e manda uma mensagem de teste. Dois grupos: "Problemas" (morte, queda da conexao, jogo congelado, falha ao reabrir, conta em outro aparelho, mochila cheia, EXP/h caiu), ligado por padrao, e "Fim de atividade" (treino e Continental concluidos). O mesmo aviso sai no maximo a cada 10 min, menos morte.
 - **App:** pet de jogador (inclusive o do proprio char) deixa de contar como monstro. O jogo marca pet com o bit de inimigo, e ele entrava no "monstro a menos de 10 m" que segura a saida segura, na busca de alvo e no nivel da area. Agora o app le o tipo da entidade (`_eEntity_Type`) e ignora pet, montaria e invocacao, com o mesmo numero de leituras.
 
 ## [0.142.0] - 2026-11-11
