@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.144.0] - 2026-11-12
+
 - **App:** o painel do Continental mostra a hora da proxima rodada de dados (e da passada de baus, quando vem antes). Entre as rodadas de 12 h a passada de baus nao rola dado, de proposito (a caveira abre luta no meio da caca), e isso parecia travado.
 - **App:** com o char fora da caca (sem o Treino rodando, fora de combate e sem lista de chars), a passada de baus tambem rola os dados, desde que tenha recarregado ao menos um (1h30) desde a ultima rodada. Cacando, segue so baus como antes.
 
