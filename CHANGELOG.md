@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** voltam as duas mudancas do Continental da 0.144.0 que a 0.145.0 perdeu no merge do Album de Cards: a hora da proxima rodada de dados no painel e a passada de baus que rola os dados com o char fora da caca.
+
 ## [0.145.0] - 2026-11-12
 
 - **App:** aba **Mapa**, a visao de cima ao vivo do que esta em volta do char: voce no centro (norte pra cima), monstros com nivel e barra de HP (elite e chefe em cores proprias; Champion e Giant contam como elite pelo nome, porque o jogo nao os marca), o alvo atual marcado e ligado por uma linha, outros jogadores e a party com nome e nivel, NPCs e pets, itens no chao, os pontos de caca salvos com o raio, grade em metros, zoom e radar de 120 m. O topo mostra o mapa, o canal e as contagens. So le com a aba aberta e o jogo conectado.

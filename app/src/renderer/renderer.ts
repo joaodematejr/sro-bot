@@ -1,6 +1,6 @@
 // Logica do renderer: conecta, le o estado do jogador pelo engine e desenha.
 
-import { chestDelayMs } from "../controller/continental";
+import { chestDelayMs, chestPassRolls, contScheduleText } from "../controller/continental";
 import { type AiAction, parseActions, stripActions, validateAction } from "../controller/aiactions";
 import { activityExpLine, eventFromLog, type ExpPoint } from "../controller/history";
 import { unsignedExp } from "../controller/train";
@@ -1479,6 +1479,21 @@ function setContNext(ms: number): void {
   } catch {
     /* sem storage: roda de novo no proximo ciclo */
   }
+  showContNext();
+}
+
+function storedAt(key: string): number {
+  try {
+    return Number(localStorage.getItem(key) ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+// Mostra no painel quando sai a proxima rodada de dados (e a passada de baus).
+function showContNext(): void {
+  const fmt = (t: number) => new Date(t).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  $("ce-next").textContent = isChecked("act-cont") ? contScheduleText(storedAt("contNextAt"), storedAt("chestNextAt"), Date.now(), fmt) : "";
 }
 
 // Com o Treino rodando, o char vai pra cidade salva antes (parado no meio dos
@@ -1566,11 +1581,36 @@ async function scheduleChests(): Promise<void> {
     /* sem storage */
   }
   log(`Continental: proxima passada de baus em ${Math.round(ms / 60000)} min${left !== null ? ` (bau destravando: faltam ${Math.round(left / 60)} min)` : ""}.`);
+  showContNext();
+}
+
+// Fora da caca nao ha risco da caveira: a passada de baus vira rodada completa.
+async function chestPassCanRoll(): Promise<boolean> {
+  let inCombat = false;
+  try {
+    const p = await window.sro.player();
+    inCombat = p.ok && !!p.inCombat;
+  } catch {
+    return false; // sem leitura do char: so baus
+  }
+  return chestPassRolls({
+    training: trainRunning || (isChecked("act-train") && activitiesRunning),
+    inCombat,
+    multiChar: parseChars(readContUi().chars).length > 0,
+    sinceRoundMs: Date.now() - (storedAt("contNextAt") - CONT_EVERY_MS),
+  });
 }
 
 async function maybeRunChests(): Promise<void> {
   if (!polling || !isChecked("act-cont") || contBusy || watchdogBusy || loggingIn || !chestDue()) return;
   if (contDue()) return; // a rodada de dado ja trata os baus
+  if (await chestPassCanRoll()) {
+    log("Continental: char fora da caca, a passada de baus tambem rola os dados.");
+    setContNext((await runContinentalSafely()) ? CONT_EVERY_MS : CONT_RETRY_MS);
+    await scheduleChests();
+    return;
+  }
+  if (contBusy) return;
   contBusy = true;
   try {
     log("Continental: passada so de baus.");
@@ -2642,6 +2682,9 @@ function wire(): void {
   $("btn-vpn-off").addEventListener("click", () => void vpnAction(() => window.sro.vpnDisable()));
   $("btn-vpn-ping").addEventListener("click", () => void measureVpnPing());
   void refreshVpn();
+  showContNext();
+  $("act-cont").addEventListener("change", showContNext);
+  window.setInterval(showContNext, 60 * 1000);
   window.setInterval(() => void maybeRunDailies().then(() => maybeRunContinental()).then(() => maybeRunChests()).then(() => maybeRunActChests()).then(() => maybeRunFreebies()).then(() => maybeRunCardAlbum()).then(() => maybeRequestQigong()), 60 * 1000);
   // Mochila: confere a cada 2 min com o bot rodando e o char em mundo.
   window.setInterval(() => {
