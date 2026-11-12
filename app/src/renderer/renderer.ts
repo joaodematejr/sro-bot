@@ -92,6 +92,7 @@ declare global {
         events: { ts: number; kind: string; text: string }[];
         samples: number;
       }>;
+      diagExport: (local: Record<string, string>, log: string) => Promise<{ ok: boolean; path?: string; erro?: string }>;
       switchChar: (name: string) => Promise<{ ok: boolean; erro?: string }>;
       mainChar: () => Promise<string>;
       isChar: (entry: string) => Promise<boolean>;
@@ -1952,6 +1953,25 @@ function log(msg: string): void {
   if (al) void sendAlert(al);
 }
 
+// Diagnostico: manda o log da tela e o localStorage pro main, que junta o resto,
+// tira os segredos e pergunta onde salvar.
+async function exportDiagnostic(): Promise<void> {
+  const local: Record<string, string> = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k !== null) local[k] = localStorage.getItem(k) ?? "";
+    }
+  } catch {
+    /* sem storage: vai sem a configuracao do painel */
+  }
+  const st = $("diag-status");
+  st.textContent = "gerando...";
+  const r = await window.sro.diagExport(local, $("log").textContent ?? "").catch((e) => ({ ok: false, path: undefined, erro: String(e) }));
+  st.textContent = r.ok ? `salvo em ${r.path}` : r.erro === "cancelado" ? "" : `falhou: ${r.erro ?? "erro"}`;
+  if (r.ok) log(`diagnostico salvo em ${r.path}.`);
+}
+
 // Falha do Telegram vai pro log uma vez a cada 10 min (sem rede, cada aviso falharia).
 let tgFailLoggedAt = 0;
 async function sendAlert(a: TelegramAlert): Promise<void> {
@@ -2615,6 +2635,7 @@ function wire(): void {
     log(v.warn ? `configuracao salva, mas ${v.warn}.` : "configuracao salva.");
   });
   $("btn-st-test").addEventListener("click", () => void testSettingsUi());
+  $("btn-diag").addEventListener("click", () => void exportDiagnostic());
   void wireAi();
   $("btn-vpn-on").addEventListener("click", () => void vpnAction(() => window.sro.vpnEnable(lastVpn?.missing ?? [])));
   $("btn-vpn-off").addEventListener("click", () => void vpnAction(() => window.sro.vpnDisable()));

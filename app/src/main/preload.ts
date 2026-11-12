@@ -90,6 +90,7 @@ contextBridge.exposeInMainWorld("sro", {
   histTick: (training: boolean) => ipcRenderer.invoke("hist:tick", training),
   histEvent: (ev: unknown) => ipcRenderer.invoke("hist:event", ev),
   histSummary: (hours: number) => ipcRenderer.invoke("hist:summary", hours),
+  diagExport: (local: Record<string, string>, log: string) => ipcRenderer.invoke("diag:export", local, log),
   autoLogin: () => ipcRenderer.invoke("engine:autologin"),
   stopLogin: () => ipcRenderer.invoke("engine:loginstop"),
   uiLog: (m: string) => ipcRenderer.send("ui:log", m),

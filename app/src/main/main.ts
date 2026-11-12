@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -48,6 +48,8 @@ import { aiChat, type AppInfo, aiSnapshot, hasAiKey, loadAiSettings, providerMod
 import type { AiSettings, ChatMessage } from "../controller/ai";
 import { flushHistory, historySummary, initHistory, recordEvent, recordSample } from "./history";
 import type { HistEvent } from "../controller/history";
+import { diagnosticFileName } from "../controller/diagnostic";
+import { collectDiagnostic } from "./diagnostic";
 import { setupUpdater } from "./updater";
 
 // Configuracao de caminhos (pasta do LDPlayer, instancia, adb) na pasta de dados.
@@ -642,6 +644,31 @@ ipcMain.handle("hist:tick", async (_e, training: boolean) => {
 });
 ipcMain.handle("hist:event", async (_e, ev: HistEvent) => recordEvent(ev));
 ipcMain.handle("hist:summary", async (_e, hours: number) => historySummary(Math.max(1, Math.min(24 * 30, hours)) * 3600 * 1000));
+
+// Diagnostico: o painel manda o log e o localStorage; o main junta versoes e os
+// .json da pasta de dados (nunca os .bin) e pergunta onde salvar.
+ipcMain.handle("diag:export", async (_e, local: Record<string, string>, log: string) => {
+  const when = new Date();
+  let history: unknown;
+  try {
+    history = historySummary(24 * 3600 * 1000);
+  } catch (e) {
+    history = "sem historico: " + String(e);
+  }
+  const text = collectDiagnostic(app.getPath("userData"), {
+    when,
+    versions: { app: app.getVersion(), electron: process.versions.electron, os: `${process.platform} ${process.getSystemVersion()}`, serial: SERIAL },
+    local,
+    history,
+    log,
+  });
+  const r = win
+    ? await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath("downloads"), diagnosticFileName(when)), filters: [{ name: "Texto", extensions: ["txt"] }] })
+    : { canceled: true, filePath: undefined };
+  if (r.canceled || !r.filePath) return { ok: false, erro: "cancelado" };
+  fs.writeFileSync(r.filePath, text, "utf-8");
+  return { ok: true, path: r.filePath };
+});
 
 ipcMain.handle("ai:snapshot", async (_e, appInfo: AppInfo) => aiState(appInfo));
 

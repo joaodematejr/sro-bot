@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** botao **Exportar diagnostico** (Ferramentas > Diagnostico): gera um `.txt` com versoes, configuracao (pasta de dados e painel), historico de 24 h e o log, pra mandar quando algo der errado. Senha, token e chaves ficam de fora: os `.bin` e a VPN nao entram, campo com nome de segredo ou de chat vira `***` e o texto perde o que tem formato de token do Telegram, chave de API ou chave WireGuard.
+
 - **App:** atividade **Álbum de Cards** (Atividades > Álbum de Cards), por metodo e rodando mesmo cacando: ativa as combinacoes prontas, sobe a estrela do grupo quando completa e, se marcado, quebra so as cartas que sobram acima do total que ainda vai usar ate a estrela maxima de todos os grupos. Escolhe as raridades que podem ser quebradas (por padrao so C e B) e o grupo alvo; "Analisar cards" mostra o que faria sem mexer em nada. Os testes do modulo passam a rodar no `npm test` e no CI.
 
 ## [0.144.0] - 2026-11-12
