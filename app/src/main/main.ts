@@ -37,6 +37,8 @@ import { runGuildHallCheck, runQigongAccept, runQigongRequest, setQigongDir, set
 import { pauseTrain, runTrain, stopTrain } from "./train";
 import { gameIps, pingIp, setVpnDir, vpnDisable, vpnEnable, vpnHealth, vpnStatus } from "./vpn";
 import { hasCredentials, saveCredentials, setCredentialsDir } from "./credentials";
+import { alertTelegram, hasTelegramToken, linkTelegram, loadTelegram, saveTelegram, setTelegramDir, type TelegramSettings, testTelegram } from "./telegram";
+import type { TelegramAlert } from "../controller/telegram";
 import { setBoosterDir } from "./booster";
 import { sellJunk, setObjvReader } from "./sell";
 import { readBuild, setAttrReader } from "./build";
@@ -551,6 +553,43 @@ ipcMain.handle("cred:set", async (_e, id: string, pwd: string) => {
   }
 });
 
+// Avisos pelo Telegram: o token so entra (criptografado) e nunca volta pro renderer.
+const tgState = () => ({ settings: loadTelegram(), hasToken: hasTelegramToken() });
+const tgErr = (e: unknown) => ({ ok: false, erro: e instanceof Error ? e.message : String(e), ...tgState() });
+ipcMain.handle("tg:get", async () => tgState());
+ipcMain.handle("tg:set", async (_e, s: Partial<TelegramSettings>, token?: string) => {
+  try {
+    saveTelegram(s ?? {}, typeof token === "string" ? token : undefined);
+    return { ok: true, ...tgState() };
+  } catch (e) {
+    return tgErr(e);
+  }
+});
+ipcMain.handle("tg:link", async () => {
+  try {
+    await linkTelegram();
+    await testTelegram();
+    return { ok: true, ...tgState() };
+  } catch (e) {
+    return tgErr(e);
+  }
+});
+ipcMain.handle("tg:test", async () => {
+  try {
+    await testTelegram();
+    return { ok: true, ...tgState() };
+  } catch (e) {
+    return tgErr(e);
+  }
+});
+ipcMain.handle("tg:alert", async (_e, a: TelegramAlert, charName?: string) => {
+  try {
+    return { ok: true, sent: await alertTelegram(a, typeof charName === "string" ? charName : undefined) };
+  } catch (e) {
+    return { ok: false, erro: e instanceof Error ? e.message : String(e) };
+  }
+});
+
 // Aba de IA (opcional, so sugere; modo Manual nao faz chamada de rede).
 ipcMain.handle("ai:get", async () => ({ settings: loadAiSettings(), hasKey: hasAiKey() }));
 
@@ -604,6 +643,7 @@ setBackupDir(path.join(app.getPath("userData"), "game-backup"));
 setVpnDir(path.join(app.getPath("userData"), "vpn"));
 setAiDir(app.getPath("userData"));
 setCredentialsDir(app.getPath("userData"));
+setTelegramDir(app.getPath("userData"));
 setBoosterDir(app.getPath("userData"));
 setQigongDir(app.getPath("userData"));
 setObjvReader(() => readGameFile(SERIAL, "sro_objv.txt"));

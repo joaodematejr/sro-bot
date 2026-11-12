@@ -9,6 +9,16 @@ import { dueDailies, gameDay } from "../controller/daily";
 import { luckyMoneyWindow } from "../controller/freebies";
 import { QIGONG_REQUEST_EVERY_MS } from "../controller/qigong";
 import { EXP_KEEP_MS, expDropText, type ExpPoint as RatePoint, type ExpWatch, expWatchStep } from "../controller/expwatch";
+import { alertFromLog, type TelegramAlert } from "../controller/telegram";
+
+interface TgSettings {
+  enabled: boolean;
+  problems: boolean;
+  done: boolean;
+  chatId?: number;
+  chatName?: string;
+}
+type TgState = { ok?: boolean; erro?: string; settings: TgSettings; hasToken: boolean };
 
 interface PlayerState {
   ok: boolean;
@@ -70,6 +80,11 @@ declare global {
       credGet: () => Promise<{ has: boolean }>;
       bag: () => Promise<{ empty?: number; used?: number }>;
       credSet: (id: string, pwd: string) => Promise<{ ok: boolean; erro?: string; has: boolean }>;
+      tgGet: () => Promise<TgState>;
+      tgSet: (s: Partial<TgSettings>, token?: string) => Promise<TgState>;
+      tgLink: () => Promise<TgState>;
+      tgTest: () => Promise<TgState>;
+      tgAlert: (a: TelegramAlert, charName?: string) => Promise<{ ok: boolean; sent?: boolean; erro?: string }>;
       histTick: (training: boolean) => Promise<boolean>;
       histEvent: (ev: { ts: number; kind: string; text: string }) => Promise<void>;
       histSummary: (hours: number) => Promise<{
@@ -550,6 +565,7 @@ async function wireAi(): Promise<void> {
     $("ai-models").innerHTML = "";
   });
   void wireCred();
+  void wireTelegram();
   $("btn-sell-now").addEventListener("click", async () => {
     log("venda do lixo: vendendo...");
     const freed = await window.sro.sellJunk().catch(() => 0);
@@ -1763,6 +1779,17 @@ function log(msg: string): void {
   // Eventos que interessam ao historico (morte, queda, ponto, time, baus).
   const ev = eventFromLog(msg);
   if (ev) void window.sro.histEvent?.({ ts: Date.now(), ...ev }).catch(() => undefined);
+  const al = alertFromLog(msg);
+  if (al) void sendAlert(al);
+}
+
+// Falha do Telegram vai pro log uma vez a cada 10 min (sem rede, cada aviso falharia).
+let tgFailLoggedAt = 0;
+async function sendAlert(a: TelegramAlert): Promise<void> {
+  const r = await window.sro.tgAlert(a, $("p-name").textContent ?? undefined).catch((e) => ({ ok: false, erro: String(e) }));
+  if (r.ok || Date.now() - tgFailLoggedAt < 10 * 60 * 1000) return;
+  tgFailLoggedAt = Date.now();
+  log("[telegram] aviso nao foi: " + (r.erro ?? "erro"));
 }
 
 // ---- EXP por atividade (o guia oficial nao diz quanto cada uma da) ----
@@ -1867,6 +1894,48 @@ async function wireCred(): Promise<void> {
     showCred(r.has, r.ok ? "apagado." : "nao apagou: " + (r.erro ?? "erro"));
   });
   showCred((await window.sro.credGet()).has);
+}
+
+// ---- Avisos no Telegram ----
+
+function showTg(st: TgState, msg?: string): void {
+  const s = st.settings;
+  ($("tg-enabled") as HTMLInputElement).checked = s.enabled;
+  ($("tg-problems") as HTMLInputElement).checked = s.problems;
+  ($("tg-done") as HTMLInputElement).checked = s.done;
+  const linked = s.chatId !== undefined;
+  ($("btn-tg-test") as HTMLButtonElement).disabled = !linked;
+  ($("btn-tg-link") as HTMLButtonElement).disabled = !st.hasToken;
+  const base = !st.hasToken ? "sem token." : linked ? `ligado ao chat de ${s.chatName || "voce"}${s.enabled ? "" : " (avisos desligados)"}.` : "token salvo; mande um \"oi\" pro bot e clique em Ligar.";
+  $("tg-status").textContent = msg ?? (st.erro ? "erro: " + st.erro : base);
+}
+
+async function wireTelegram(): Promise<void> {
+  const token = $("tg-token") as HTMLInputElement;
+  const status = (m: string) => ($("tg-status").textContent = m);
+  $("btn-tg-save").addEventListener("click", async () => {
+    if (!token.value.trim()) return status("cole o token do @BotFather.");
+    const r = await window.sro.tgSet({}, token.value);
+    token.value = "";
+    showTg(r, r.ok ? undefined : "nao salvou: " + (r.erro ?? "erro"));
+  });
+  $("btn-tg-link").addEventListener("click", async () => {
+    status("procurando a sua mensagem pro bot...");
+    const r = await window.sro.tgLink();
+    showTg(r, r.ok ? `ligado ao chat de ${r.settings.chatName || "voce"}; mandei uma mensagem de teste.` : r.erro);
+  });
+  $("btn-tg-test").addEventListener("click", async () => {
+    const r = await window.sro.tgTest();
+    showTg(r, r.ok ? "teste enviado." : "nao foi: " + (r.erro ?? "erro"));
+  });
+  $("btn-tg-clear").addEventListener("click", async () => {
+    const r = await window.sro.tgSet({}, "");
+    showTg(r, r.ok ? "token apagado." : "nao apagou: " + (r.erro ?? "erro"));
+  });
+  for (const [id, key] of [["tg-enabled", "enabled"], ["tg-problems", "problems"], ["tg-done", "done"]] as const) {
+    $(id).addEventListener("change", async () => showTg(await window.sro.tgSet({ [key]: ($(id) as HTMLInputElement).checked })));
+  }
+  showTg(await window.sro.tgGet());
 }
 
 // ---- Historico (Farm & Hunting) ----

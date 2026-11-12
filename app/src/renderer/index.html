@@ -446,6 +446,27 @@
               </div>
               <div class="panel p-4 space-y-3">
                 <div>
+                  <div class="text-sm font-semibold">Avisos no Telegram</div>
+                  <div class="text-xs text-muted">No Telegram, fale com o @BotFather, mande /newbot e cole aqui o token que ele der. Depois mande um "oi" pro seu bot e clique em Ligar. O token fica criptografado pelo Windows e nunca aparece de novo.</div>
+                </div>
+                <div class="flex items-center gap-2 text-sm text-gray-300">
+                  <label class="flex flex-1 items-center gap-2">Token <input type="password" id="tg-token" autocomplete="off" spellcheck="false" class="flex-1 bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100" /></label>
+                  <button id="btn-tg-save" class="btn">Salvar token</button>
+                </div>
+                <div class="flex flex-wrap items-center gap-4 text-sm text-gray-300">
+                  <label class="flex items-center gap-2"><input type="checkbox" id="tg-enabled" /> Mandar avisos</label>
+                  <label class="flex items-center gap-2" title="morte, queda da conexao, jogo congelado, outro aparelho, mochila cheia, EXP/h caiu"><input type="checkbox" id="tg-problems" /> Problemas</label>
+                  <label class="flex items-center gap-2" title="treino e Continental concluidos"><input type="checkbox" id="tg-done" /> Fim de atividade</label>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button id="btn-tg-link" class="btn btn-gold">Ligar</button>
+                  <button id="btn-tg-test" class="btn">Testar</button>
+                  <button id="btn-tg-clear" class="btn">Apagar</button>
+                  <span id="tg-status" class="text-xs text-muted">-</span>
+                </div>
+              </div>
+              <div class="panel p-4 space-y-3">
+                <div>
                   <div class="text-sm font-semibold">Configuração</div>
                   <div class="text-xs text-muted">qual emulador, onde ele está e qual instância o bot usa</div>
                 </div>
