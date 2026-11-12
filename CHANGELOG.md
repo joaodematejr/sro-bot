@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.146.1] - 2026-11-12
+
 - **App:** o Firm ja entregue no dia deixa de aparecer como "falhou: missao do Firm nao achada (char sem guilda?)". Depois do premio total o jogo tira a missao da lista ate a virada do dia; agora o app le o premio do dia e a guilda, conclui com "Firm de hoje ja entregue" e nao tenta de novo a cada Iniciar bot. "Sem guilda" so aparece quando o char nao tem guilda mesmo.
 
 ## [0.146.0] - 2026-11-12
