@@ -599,17 +599,14 @@ bool field_is_string(void* fi) {
     return is;
 }
 
-// {"ok":true,"str":"..."} de um System.String (null vira "null":true). O
-// read_il2cpp_string ja troca nao-ASCII por '?'; aqui so escapa aspas e barra.
-// Requer FaultGuard ativo.
+std::string il2cpp_string_json(void* s, int maxLen = 128);
+
+// {"ok":true,"str":"..."} de um System.String (null vira "null":true), em UTF-8:
+// nome e chat com letra fora do ASCII saem inteiros (o chat vai ate 512
+// caracteres). Requer FaultGuard ativo.
 std::string string_json(void* s) {
     if (!s) return "{\"ok\":true,\"null\":true}";
-    std::string out = "{\"ok\":true,\"str\":\"";
-    for (char c : read_il2cpp_string(s)) {
-        if (c == '"' || c == '\\') out += '\\';
-        out += c;
-    }
-    return out + "\"}";
+    return "{\"ok\":true,\"str\":\"" + il2cpp_string_json(s, 512) + "\"}";
 }
 
 // Igual ao dump_object_values, mas com o TIPO de cada campo e, quando o valor
@@ -1969,11 +1966,12 @@ std::string walk_path(const std::vector<std::string>& path, size_t end, void*& o
 }
 
 // Il2CppString (UTF-16) em UTF-8 com escape de JSON. O read_il2cpp_string troca
-// letra fora do ASCII por "?"; aqui o nome sai inteiro pro mapa.
-std::string il2cpp_string_json(void* s) {
+// letra fora do ASCII por "?"; aqui o texto sai inteiro (nomes do mapa e GETP).
+// Texto maior que maxLen volta vazio, como no read_il2cpp_string.
+std::string il2cpp_string_json(void* s, int maxLen) {
     std::string out;
     int len = 0;
-    if (!plausible(s) || !safe_read(&len, (char*)s + 0x10, 4) || len <= 0 || len > 128) return out;
+    if (!plausible(s) || !safe_read(&len, (char*)s + 0x10, 4) || len <= 0 || len > maxLen) return out;
     for (int i = 0; i < len; i++) {
         uint16_t c = 0;
         if (!safe_read(&c, (char*)s + 0x14 + i * 2, 2)) break;
