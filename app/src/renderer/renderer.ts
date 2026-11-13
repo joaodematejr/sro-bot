@@ -13,6 +13,7 @@ import { alertFromLog, type TelegramAlert } from "../controller/telegram";
 import { uniqueStep, uniqueText } from "../controller/unique";
 import { CHAT_CHANNELS, type ChatMessage, mergeChat } from "../controller/chat";
 import { pathAhead } from "../controller/map";
+import type { NavMap } from "../controller/navmesh";
 import { buffLabel, buffLeftText, type CharBuff, killStep } from "../controller/charstatus";
 import { clearsNotice, nextNotice, noticeFromLog, type StopNotice } from "../controller/stopnotice";
 
@@ -63,6 +64,7 @@ declare global {
       ents: () => Promise<Pick<MapView, "me" | "ents"> | null>;
       chat: (key: string, sinceId: number) => Promise<ChatMessage[] | null>;
       buffs: () => Promise<CharBuff[] | null>;
+      navmesh: (scene: number) => Promise<NavMap | null>;
       chatSend: (key: string, text: string, to?: string) => Promise<{ ok: boolean; erro?: string }>;
       inject: () => Promise<{ ok: boolean; erro?: string }>;
       restore: () => Promise<{ ok: boolean; erro?: string }>;
@@ -2866,6 +2868,34 @@ function mapPxPerM(): number {
   return MAP_ZOOMS[mapZoom];
 }
 
+// Navmesh da cena (paredes): pedido uma vez por cena; o main guarda em disco.
+// Sem navmesh (engine antigo, erro) tenta de novo depois de 2 min.
+let navScene = -1;
+let navData: NavMap | null = null;
+let navBusy = false;
+let navRetryAt = 0;
+
+function ensureNav(scene: number): void {
+  if (scene <= 0 || navBusy || (scene === navScene && (navData || Date.now() < navRetryAt))) return;
+  if (scene !== navScene) navData = null;
+  navScene = scene;
+  navBusy = true;
+  window.sro
+    .navmesh(scene)
+    .then((n) => {
+      if (navScene !== scene) return;
+      navData = n;
+      if (!n) navRetryAt = Date.now() + 120000;
+      drawMap(mapLast);
+    })
+    .catch(() => {
+      navRetryAt = Date.now() + 120000;
+    })
+    .finally(() => {
+      navBusy = false;
+    });
+}
+
 function drawMap(v: MapView | null): void {
   const cv = $("map-canvas") as HTMLCanvasElement;
   const dpr = window.devicePixelRatio || 1;
@@ -2892,6 +2922,37 @@ function drawMap(v: MapView | null): void {
   const cy = h / 2;
   const sx = (x: number) => cx + (x - v.me.x) * ppm;
   const sy = (z: number) => cy - (z - v.me.z) * ppm;
+  // Navmesh: fora dele (bloqueado) fica mais escuro, o andavel um pouco mais
+  // claro e a borda vira parede. So o que cabe na tela.
+  const nav = navScene === v.scene ? navData : null;
+  if (nav) {
+    const hw = w / 2 / ppm + 2, hh = h / 2 / ppm + 2;
+    const inView = (x: number, z: number) => Math.abs(x - v.me.x) < hw && Math.abs(z - v.me.z) < hh;
+    g.fillStyle = "#050608";
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = "#12161d";
+    g.beginPath();
+    const T = nav.tris;
+    for (let i = 0; i < T.length; i += 6) {
+      if (!inView(T[i], T[i + 1]) && !inView(T[i + 2], T[i + 3]) && !inView(T[i + 4], T[i + 5])) continue;
+      g.moveTo(sx(T[i]), sy(T[i + 1]));
+      g.lineTo(sx(T[i + 2]), sy(T[i + 3]));
+      g.lineTo(sx(T[i + 4]), sy(T[i + 5]));
+      g.closePath();
+    }
+    g.fill();
+    g.strokeStyle = "#475063";
+    g.lineWidth = 1.5;
+    g.beginPath();
+    const W = nav.walls;
+    for (let i = 0; i < W.length; i += 4) {
+      if (!inView(W[i], W[i + 1]) && !inView(W[i + 2], W[i + 3])) continue;
+      g.moveTo(sx(W[i]), sy(W[i + 1]));
+      g.lineTo(sx(W[i + 2]), sy(W[i + 3]));
+    }
+    g.stroke();
+    g.lineWidth = 1;
+  }
   // Grade a cada 10 m (mais forte a cada 50 m), presa ao mundo.
   const step = ppm < 2.5 ? 50 : 10;
   for (let k = Math.floor((v.me.x - w / 2 / ppm) / step) * step; k <= v.me.x + w / 2 / ppm; k += step) {
@@ -3084,6 +3145,7 @@ async function mapTick(): Promise<void> {
   try {
     const v = await window.sro.map();
     mapLast = v;
+    if (v) ensureNav(v.scene);
     live.textContent = v ? "ao vivo" : "sem leitura";
     live.className = v ? "pill bg-ok/20 text-ok" : "pill bg-ink-600 text-muted";
     mapNextAt = Date.now() + (v?.source === "getp" ? 20000 : 1000);

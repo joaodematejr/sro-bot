@@ -29,6 +29,7 @@ import { type AppSettings, consolePath, normalizeSettings, resolveAdb, serialFor
 import { adbBin, setAdbBin, setEmulator } from "./adbbin";
 import { chatChannelId, chatSendCheck, parseTzOffset, readChatChannel, sayBody } from "../controller/chat";
 import { parseBufs } from "../controller/charstatus";
+import { buildNav, type NavMap, parseNavText } from "../controller/navmesh";
 import { runDemonTower, stopDemonTower } from "./tower";
 import { hpPercent, readChannel, readEnemiesAround, readTrainSnapshot, safeToStopHunt, type TrainConfig } from "../controller/train";
 import type { FirmConfig } from "../controller/firm";
@@ -253,6 +254,65 @@ ipcMain.handle("engine:buffs", async () => {
     b.name = buffNames.get(b.key) ?? "";
   }
   return list;
+});
+
+// Navmesh da cena pro Mapa (paredes e areas bloqueadas). Pede ao engine (NAVM:
+// triangulacao na thread principal) so uma vez por cena e guarda em
+// navmesh/<cena>.txt na pasta de dados. Null = engine sem NAVM, cena trocou no
+// meio ou erro; o Mapa segue sem paredes.
+const navCache = new Map<number, NavMap | null>();
+const navBusy = new Map<number, Promise<NavMap | null>>();
+async function fetchNavText(scene: number): Promise<string | null> {
+  const q = (tag: string, body: string) => sendCommand("127.0.0.1", HOST_PORT, tag, body, 8000);
+  const sceneNow = async () => (await q("GETP", "XScene get_SceneID")).int;
+  if ((await sceneNow()) !== scene) return null;
+  const st = await q("NAVM", "start");
+  if (st.ok !== true) return null; // engine antigo
+  let size = 0;
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    const r = await q("NAVM", "get 0");
+    if (r.state === 3) return null;
+    if (r.state === 2 && typeof r.size === "number") {
+      size = r.size;
+      break;
+    }
+  }
+  if (!size) return null;
+  let text = "";
+  while (text.length < size) {
+    const r = await q("NAVM", `get ${text.length}`);
+    if (r.state !== 2 || typeof r.part !== "string" || !r.part) return null;
+    text += r.part;
+  }
+  return (await sceneNow()) === scene ? text : null;
+}
+ipcMain.handle("engine:navmesh", async (_e, scene: number) => {
+  if (!Number.isInteger(scene) || scene <= 0) return null;
+  if (navCache.has(scene)) return navCache.get(scene);
+  let busy = navBusy.get(scene);
+  if (!busy) {
+    busy = (async () => {
+      const file = path.join(app.getPath("userData"), "navmesh", `${scene}.txt`);
+      let text: string | null = null;
+      try {
+        text = fs.readFileSync(file, "utf8");
+      } catch {
+        text = await fetchNavText(scene).catch(() => null);
+        if (text) {
+          fs.mkdirSync(path.dirname(file), { recursive: true });
+          fs.writeFileSync(file, text);
+        }
+      }
+      const raw = text ? parseNavText(text) : null;
+      const nav = raw ? buildNav(raw) : null;
+      if (nav) navCache.set(scene, nav);
+      return nav;
+    })();
+    navBusy.set(scene, busy);
+    void busy.finally(() => navBusy.delete(scene));
+  }
+  return busy;
 });
 
 // Mochila: espacos livres e ocupados (so leitura; pro aviso de mochila cheia).

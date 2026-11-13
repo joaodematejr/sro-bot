@@ -119,6 +119,11 @@ std::atomic<int> g_kills{0};
 // CLOCK_MONOTONIC (ms) da leitura: o BUFS conta o tempo restante dos buffs nele.
 std::atomic<float> g_rt{-1.0f};
 std::atomic<long long> g_rt_ms{0};
+// Navmesh da cena (NAVM): 0 nada, 1 na fila, 2 pronto, 3 erro. g_nav_text =
+// "v x,z,x,z...|t a,b,c,...|a area,..." (so numeros, pra ir em pedacos no JSON).
+std::mutex g_nav_mu;
+std::string g_nav_text;
+std::atomic<int> g_nav_state{0};
 
 struct Introspection {
     bool ok = false;
@@ -1206,7 +1211,7 @@ void exec_auto_main(const Action& act) {
     // Metodos 7/8/9/10 (calls/callsn/callsi/callp, ex.: login) nao dependem do
     // jogador: rodam pre-mundo. Os demais (0-6, auto-hunt) precisam do player.
     if (!player && method != 7 && method != 8 && method != 9 && method != 10 && method != 11 && method != 12 &&
-        method != 13 && method != 14) return;
+        method != 13 && method != 14 && method != 16) return;
     if (!g_api.object_get_class || !g_api.class_get_method_from_name || !g_api.runtime_invoke)
         return;
     uint8_t b1 = a1 ? 1 : 0, b2 = a2 ? 1 : 0;
@@ -1314,6 +1319,76 @@ void exec_auto_main(const Action& act) {
         g_api.runtime_invoke(act.mi, act.obj, act.argc > 0 ? p : nullptr, &exc);
         LOG("exec callp %s.%s(%d nulos) obj=%p exc=%s", act.cls, act.name, act.argc, act.obj,
             exc ? "sim" : "nao");
+        return;
+    }
+
+    // method 16 = NAVM: UnityEngine.AI.NavMesh.CalculateTriangulation() da cena
+    // atual (metodo da Unity: so aqui, na thread principal). Guarda vertices em
+    // x,z (0,1 m), os triangulos e a area de cada um em g_nav_text pro socket
+    // mandar em pedacos. Roda uma vez por pedido do app (que guarda por cena).
+    if (method == 16) {
+        static const void* mi = nullptr;
+        static bool tried = false;
+        if (!mi && !tried) {
+            tried = true;
+            size_t count = 0;
+            const void** asms = g_api.domain_get_assemblies(g_api.domain_get(), &count);
+            for (size_t i = 0; i < count && !mi; i++) {
+                const void* img = g_api.assembly_get_image(asms[i]);
+                const char* an = img ? g_api.image_get_name(img) : nullptr;
+                if (!an || std::strncmp(an, "UnityEngine.AIModule", 20) != 0) continue;
+                void* k = g_api.class_from_name(img, "UnityEngine.AI", "NavMesh");
+                mi = k ? g_api.class_get_method_from_name(k, "CalculateTriangulation", 0) : nullptr;
+            }
+        }
+        auto fail = [](const char* why) {
+            LOGE("navm: %s", why);
+            g_nav_state = 3;
+        };
+        if (!mi) return fail("NavMesh.CalculateTriangulation nao achado");
+        void* exc = nullptr;
+        void* r = g_api.runtime_invoke(mi, nullptr, nullptr, &exc);
+        if (exc || !r) return fail("excecao na triangulacao");
+        // NavMeshTriangulation volta boxed: o offset do campo ja conta o cabecalho.
+        void* tc = g_api.object_get_class(r);
+        void* fv = tc ? g_api.class_get_field_from_name(tc, "vertices") : nullptr;
+        void* fi = tc ? g_api.class_get_field_from_name(tc, "indices") : nullptr;
+        void* fa = tc ? g_api.class_get_field_from_name(tc, "areas") : nullptr;
+        if (!fv || !fi) return fail("campos vertices/indices nao achados");
+        void* va = *(void**)((char*)r + g_api.field_get_offset(fv));
+        void* ia = *(void**)((char*)r + g_api.field_get_offset(fi));
+        void* aa = fa ? *(void**)((char*)r + g_api.field_get_offset(fa)) : nullptr;
+        if (!plausible_obj(va) || !plausible_obj(ia)) return fail("navmesh vazio");
+        size_t nv = *(size_t*)((char*)va + 0x18), ni = *(size_t*)((char*)ia + 0x18);
+        size_t na = plausible_obj(aa) ? *(size_t*)((char*)aa + 0x18) : 0;
+        if (nv > 400000 || ni > 1200000) return fail("navmesh grande demais");
+        std::string s;
+        s.reserve(nv * 14 + ni * 6 + na * 2 + 16);
+        char b[48];
+        s += "v ";
+        const float* v = (const float*)((char*)va + 0x20);
+        for (size_t i = 0; i < nv; i++) {
+            std::snprintf(b, sizeof(b), "%s%.1f,%.1f", i ? "," : "", v[i * 3], v[i * 3 + 2]);
+            s += b;
+        }
+        s += "|t ";
+        const int32_t* ix = (const int32_t*)((char*)ia + 0x20);
+        for (size_t i = 0; i < ni; i++) {
+            std::snprintf(b, sizeof(b), "%s%d", i ? "," : "", ix[i]);
+            s += b;
+        }
+        s += "|a ";
+        const int32_t* ar = na ? (const int32_t*)((char*)aa + 0x20) : nullptr;
+        for (size_t i = 0; i < na; i++) {
+            std::snprintf(b, sizeof(b), "%s%d", i ? "," : "", ar[i]);
+            s += b;
+        }
+        {
+            std::lock_guard<std::mutex> lk(g_nav_mu);
+            g_nav_text.swap(s);
+        }
+        g_nav_state = 2;
+        LOG("navm: %zu vertices, %zu triangulos", nv, ni / 3);
         return;
     }
 
@@ -2700,6 +2775,33 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
         char buf[120];
         std::snprintf(buf, sizeof(buf), "{\"ok\":true,\"enfileirado\":[%.1f,%.1f,%.1f]}", x, y, z);
         return buf;
+    }
+    // NAVM start: pede a triangulacao do navmesh da cena atual (method 16, na
+    // thread principal). NAVM get <off>: estado e um pedaco de ate 60000
+    // caracteres do texto a partir de off (so numeros, virgula, espaco e |).
+    if (tag == "NAVM" && g_ready) {
+        if (body.rfind("start", 0) == 0) {
+            if (g_nav_state != 1) {
+                g_nav_state = 1;
+                Action act{};
+                act.type = 2; act.method = 16;
+                std::lock_guard<std::mutex> lk(g_queue_mu);
+                g_queue.push_back(act);
+                g_has_actions = true;
+            }
+            return "{\"ok\":true,\"state\":1}";
+        }
+        if (body.rfind("get ", 0) == 0) {
+            size_t off = (size_t)std::strtoull(body.c_str() + 4, nullptr, 10);
+            int st = g_nav_state.load();
+            std::lock_guard<std::mutex> lk(g_nav_mu);
+            size_t size = st == 2 ? g_nav_text.size() : 0;
+            std::string part = (st == 2 && off < size) ? g_nav_text.substr(off, 60000) : std::string();
+            char head[96];
+            std::snprintf(head, sizeof(head), "{\"ok\":true,\"state\":%d,\"size\":%zu,\"off\":%zu,\"part\":\"", st, size, off);
+            return std::string(head) + part + "\"}";
+        }
+        return "{\"ok\":false,\"erro\":\"uso: NAVM start | NAVM get off\"}";
     }
     // CHAT <canal> <roleid> <hex>: manda uma mensagem no chat (method 15). Canal
     // 1 Mundo, 2 Guilda, 7 Party, 3 Privado (roleid = destino; 0 nos outros).

@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** o **Mapa** mostra **paredes e areas bloqueadas**: o navmesh da cena (o mesmo que o jogo usa pra achar caminho) pinta a area andavel um pouco mais clara, o resto fica escuro e a borda vira parede. Lido uma vez por mapa e guardado na pasta de dados (`navmesh/<cena>.txt`); nas proximas vezes abre na hora.
+- **Engine:** comando `NAVM` (`start` pede `NavMesh.CalculateTriangulation` na thread principal; `get <pos>` devolve o resultado em pedacos de 60 mil caracteres).
 - **App:** status do char: a aba Status mostra os **buffs ativos** com nome, nivel, pilha e tempo restante (descendo a cada segundo; lidos a cada 10 s), e a aba Estatisticas ganha **Abates** e **Abates / hora** da sessao.
 - **Engine:** comando `BUFS` (buffs do char com o tempo restante pelo relogio do jogo, lido na thread principal) e `kills` no estado do jogador (o hook de morte conta so as mortes em que quem matou foi o char).
 - **App:** o **Mapa** mostra o **caminho que o char esta andando**: uma linha azul do char ate o destino, so com o trecho que falta, e "andando: faltam N m" no topo. Vale pra viagem do Treino ate o ponto, missao e clique no mapa do jogo; parado, nao aparece. O caminho vem no mesmo ENTS do mapa (precisa do engine novo).
