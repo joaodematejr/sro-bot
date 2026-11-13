@@ -50,6 +50,7 @@
           <nav class="flex gap-1 px-4 bg-ink-800 border-b border-line">
             <div class="tab tab-active" data-tab="status">Status</div>
             <div class="tab" data-tab="map">Mapa</div>
+            <div class="tab" data-tab="chat">Chat</div>
             <div class="tab" data-tab="stats">Estatísticas</div>
             <div class="tab" data-tab="activities">Atividades</div>
             <div class="tab" data-tab="tools">Ferramentas</div>
@@ -93,6 +94,19 @@
                     <div><span class="inline-block w-2.5 h-2.5 rounded-full align-middle mr-1 border" style="border-color:#2dd4bf"></span>Área de caça</div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <!-- Aba Chat: mensagens do jogo, so leitura -->
+            <div id="tab-chat" class="hidden space-y-3">
+              <div class="panel p-3">
+                <div class="flex flex-wrap items-center gap-2 mb-2">
+                  <div id="chat-channels" class="flex gap-1"></div>
+                  <span id="chat-live" class="pill bg-ink-600 text-muted">parado</span>
+                  <div class="flex-1"></div>
+                  <span class="text-xs text-muted">Só leitura: para responder, use o jogo.</span>
+                </div>
+                <div id="chat-list" class="rounded-md bg-ink-900 p-2 overflow-y-auto text-sm space-y-0.5" style="height: 560px"></div>
               </div>
             </div>
 

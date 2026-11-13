@@ -4,6 +4,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** aba **Chat** com o chat do jogo no painel, so leitura: Mundo, Guilda, Party e Privado (quem mandou pra quem), com hora no seu fuso e nome de quem escreveu (o seu em dourado). Le com a aba aberta e o jogo conectado; a primeira abertura de um canal traz as ultimas 30 mensagens (uns 7 s) e depois so as novas, a cada 3 s. Responder continua sendo no jogo.
+- **Engine:** o texto lido do jogo sai inteiro em UTF-8 (antes letra fora do ASCII vinha como "?"): nomes e mensagens em tailandes, arabe, com acento ou simbolo aparecem certos. Vale depois de abrir o jogo de novo pelo app (o engine novo entra na injecao).
+
 ## [0.147.0] - 2026-11-12
 
 - **App:** Continental com a regiao **Automatico por cards**: escolhe o mapa cujos cards mais faltam no Album de Cards pra fechar combinacoes e subir estrela (grupo no maximo nao gasta dado; sem leitura do album, cai no automatico por nivel). A leitura do album fica guardada pra rodada usar, e cada passada de baus pede uma nova analise do album. Depois de cada passada so de baus a rodada de dados e antecipada pra checagem seguinte, mesmo com o char cacando (no ponto valem as travas de HP de sempre: so comeca com 90% e desiste abaixo de 60%).
