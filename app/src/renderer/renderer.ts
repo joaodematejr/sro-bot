@@ -13,6 +13,7 @@ import { alertFromLog, type TelegramAlert } from "../controller/telegram";
 import { uniqueStep, uniqueText } from "../controller/unique";
 import { CHAT_CHANNELS, type ChatMessage, mergeChat } from "../controller/chat";
 import { pathAhead } from "../controller/map";
+import { buffLabel, buffLeftText, type CharBuff, killStep } from "../controller/charstatus";
 import { clearsNotice, nextNotice, noticeFromLog, type StopNotice } from "../controller/stopnotice";
 
 interface TgSettings {
@@ -39,6 +40,7 @@ interface PlayerState {
   inCombat?: boolean;
   autoPlayOn?: boolean;
   aiFighting?: boolean;
+  kills?: number; // abates do char desde que o jogo abriu (hook de morte do engine)
   corrected?: [number, number, number];
   next?: [number, number, number];
   erro?: string;
@@ -60,6 +62,7 @@ declare global {
       map: () => Promise<MapView | null>;
       ents: () => Promise<Pick<MapView, "me" | "ents"> | null>;
       chat: (key: string, sinceId: number) => Promise<ChatMessage[] | null>;
+      buffs: () => Promise<CharBuff[] | null>;
       chatSend: (key: string, text: string, to?: string) => Promise<{ ok: boolean; erro?: string }>;
       inject: () => Promise<{ ok: boolean; erro?: string }>;
       restore: () => Promise<{ ok: boolean; erro?: string }>;
@@ -2333,6 +2336,8 @@ interface Stats {
   distance: number;
   lastPos?: [number, number, number];
   deaths: number;
+  kills: number;
+  lastKills?: number;
   lastDead: boolean;
   combatMs: number;
   lastTime: number;
@@ -2351,6 +2356,7 @@ function resetStats(): void {
     totalExp: 0,
     distance: 0,
     deaths: 0,
+    kills: 0,
     lastDead: false,
     combatMs: 0,
     lastTime: 0,
@@ -2392,6 +2398,9 @@ function updateStats(p: PlayerState): void {
   // mortes (transicao vivo -> morto) e tempo em combate
   const now = Date.now();
   if (p.dead && !s.lastDead) s.deaths++;
+  const k = killStep(s.lastKills, p.kills);
+  s.kills += k.gained;
+  s.lastKills = k.last;
   s.lastDead = !!p.dead;
   if (s.lastTime && p.inCombat) {
     const dt = now - s.lastTime;
@@ -2431,6 +2440,9 @@ function renderStats(): void {
   $("s-expgain").textContent = Math.round(s.totalExp).toLocaleString();
   $("s-dist").textContent = Math.round(s.distance).toLocaleString();
   $("s-samples").textContent = String(s.samples);
+  // Engine sem contador de abates (antes do hook com o Killer): "-".
+  $("s-kills").textContent = s.lastKills === undefined ? "-" : String(s.kills);
+  $("s-killrate").textContent = s.lastKills === undefined || upH <= 0 ? "-" : `${Math.round(s.kills / upH)}/h`;
   $("s-deaths").textContent = String(s.deaths);
   $("s-combat").textContent = s.combatMs > 0 ? fmtDur(s.combatMs) : "0s";
   $("s-hp").textContent = s.cur?.maxHp ? `${s.cur.hp}/${s.cur.maxHp}` : "-";
@@ -3106,6 +3118,59 @@ function setupMap(): void {
   setInterval(() => void mapTick(), 250);
 }
 
+// ---- Buffs ativos (aba Status) ----
+// Le o BUFS a cada 10 s com a aba Status aberta e o jogo conectado; entre uma
+// leitura e outra o tempo restante desce aqui, a cada 1 s.
+const BUFFS_EVERY_MS = 10000;
+let buffsLast: CharBuff[] | null = null;
+let buffsAt = 0;
+let buffsBusy = false;
+
+function drawBuffs(): void {
+  const box = $("p-buffs");
+  if (!buffsLast) {
+    box.textContent = gameOpen ? "sem leitura (engine sem BUFS? abra o jogo de novo pelo app)" : "-";
+    return;
+  }
+  if (!buffsLast.length) {
+    box.textContent = "nenhum";
+    return;
+  }
+  const gone = (Date.now() - buffsAt) / 1000;
+  const list = buffsLast
+    .map((b) => (b.left >= 0 ? { ...b, left: b.left - gone } : b))
+    .filter((b) => !(b.total > 0 && b.left >= 0 && b.left <= 0))
+    .sort((a, b) => (a.total > 0 ? 0 : 1) - (b.total > 0 ? 0 : 1) || a.left - b.left);
+  box.replaceChildren(
+    ...list.map((b) => {
+      const chip = document.createElement("span");
+      chip.className = "pill bg-ink-600 text-gray-200";
+      const left = buffLeftText(b);
+      chip.textContent = left ? `${buffLabel(b)} · ${left}` : buffLabel(b);
+      chip.title = `id ${b.id}`;
+      return chip;
+    }),
+  );
+}
+
+async function buffsTick(): Promise<void> {
+  if ($("tab-status").classList.contains("hidden")) return;
+  if (!gameOpen || buffsBusy || Date.now() - buffsAt < BUFFS_EVERY_MS) {
+    drawBuffs();
+    return;
+  }
+  buffsBusy = true;
+  try {
+    buffsLast = await window.sro.buffs();
+  } catch {
+    buffsLast = null;
+  } finally {
+    buffsAt = Date.now();
+    buffsBusy = false;
+  }
+  drawBuffs();
+}
+
 // ---- Chat do jogo (aba Chat) ----
 // Com a aba aberta e o jogo conectado, le as mensagens novas do canal escolhido a
 // cada 3 s. Cada canal guarda o que ja leu (ate 200). O texto entra por
@@ -3262,6 +3327,7 @@ function setupChat(): void {
 wire();
 setupMap();
 setupChat();
+setInterval(() => void buffsTick(), 1000);
 setConn("off", "desconectado");
 log("pronto. Iniciar injeta e sobe o jogo (marque Auto-login pra logar sozinho). Parar restaura.");
 

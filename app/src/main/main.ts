@@ -28,6 +28,7 @@ import { type GameState, reconnectPlan } from "../controller/libstate";
 import { type AppSettings, consolePath, normalizeSettings, resolveAdb, serialFor } from "../controller/settings";
 import { adbBin, setAdbBin, setEmulator } from "./adbbin";
 import { chatChannelId, chatSendCheck, parseTzOffset, readChatChannel, sayBody } from "../controller/chat";
+import { parseBufs } from "../controller/charstatus";
 import { runDemonTower, stopDemonTower } from "./tower";
 import { hpPercent, readChannel, readEnemiesAround, readTrainSnapshot, safeToStopHunt, type TrainConfig } from "../controller/train";
 import type { FirmConfig } from "../controller/firm";
@@ -233,6 +234,25 @@ ipcMain.handle("engine:chatsend", async (_e, key: string, text: string, to?: str
   if (r.ok !== true) return { ok: false, erro: typeof r.erro === "string" ? r.erro : "engine sem o comando de chat (abra o jogo de novo pelo app)" };
   chatSentAt.set(key, Date.now());
   return { ok: true };
+});
+
+// Buffs ativos do char (BUFS), com o nome traduzido pelo jogo e guardado. Engine
+// sem BUFS devolve so o jogador: null.
+const buffNames = new Map<string, string>();
+ipcMain.handle("engine:buffs", async () => {
+  const q = (tag: string, body: string) => sendCommand("127.0.0.1", HOST_PORT, tag, body);
+  const list = parseBufs(await q("BUFS", ""));
+  if (!list) return null;
+  let fresh = 0;
+  for (const b of list) {
+    if (!b.key) continue;
+    if (!buffNames.has(b.key) && fresh++ < 10) {
+      const t = await q("GETP", `Localization Localize:"${b.key}"`);
+      buffNames.set(b.key, typeof t.str === "string" && t.str !== b.key ? t.str : "");
+    }
+    b.name = buffNames.get(b.key) ?? "";
+  }
+  return list;
 });
 
 // Mochila: espacos livres e ocupados (so leitura; pro aviso de mochila cheia).

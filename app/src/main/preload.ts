@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("sro", {
   player: () => ipcRenderer.invoke("engine:player"),
   map: () => ipcRenderer.invoke("engine:map"),
   ents: () => ipcRenderer.invoke("engine:ents"),
+  buffs: () => ipcRenderer.invoke("engine:buffs"),
   chat: (key: string, sinceId: number) => ipcRenderer.invoke("engine:chat", key, sinceId),
   chatSend: (key: string, text: string, to?: string) => ipcRenderer.invoke("engine:chatsend", key, text, to),
   inject: () => ipcRenderer.invoke("engine:inject"),

@@ -113,6 +113,12 @@ FnUpd g_orig_login_update = nullptr;
 using FnDeath = void (*)(void*, void*, const void*);
 FnDeath g_orig_death = nullptr;
 std::atomic<int> g_death_events{0};
+// Mortes cujo Killer e o jogador local (abates do char, contados no hook).
+std::atomic<int> g_kills{0};
+// Relogio do jogo (Time.realtimeSinceStartup) lido na thread principal ~1x/s e o
+// CLOCK_MONOTONIC (ms) da leitura: o BUFS conta o tempo restante dos buffs nele.
+std::atomic<float> g_rt{-1.0f};
+std::atomic<long long> g_rt_ms{0};
 
 struct Introspection {
     bool ok = false;
@@ -855,17 +861,17 @@ std::string read_live_player(Il2CppApi& api, const void* img) {
     LOG("player=%p name=%s lvl=%d pos=(%.1f,%.1f,%.1f)", player, name.c_str(), level,
         cp[0], cp[1], cp[2]);
 
-    char head[448];
+    char head[512];
     std::snprintf(head, sizeof(head),
                   "{\"ok\":true,\"player\":\"%p\",\"level\":%d,\"exp\":%d,\"maxExp\":%d,"
                   "\"hp\":%d,\"maxHp\":%d,\"mp\":%d,\"maxMp\":%d,"
                   "\"dead\":%s,\"inCombat\":%s,\"autoPlayOn\":%s,\"aiFighting\":%s,"
-                  "\"deathEvents\":%d,"
+                  "\"deathEvents\":%d,\"kills\":%d,"
                   "\"corrected\":[%.2f,%.2f,%.2f],\"okc\":%s,\"name\":\"",
                   player, level, exp, maxexp, hp, maxHp, mp, maxMp,
                   dead ? "true" : "false", inCombat ? "true" : "false",
                   autoPlay ? "true" : "false", aiFight ? "true" : "false",
-                  g_death_events.load(std::memory_order_relaxed),
+                  g_death_events.load(std::memory_order_relaxed), g_kills.load(std::memory_order_relaxed),
                   cp[0], cp[1], cp[2], okc ? "true" : "false");
     return std::string(head) + esc + "\"}";
 }
@@ -1506,7 +1512,42 @@ void exec_auto_main(const Action& act) {
     }
 }
 
+long long monotonic_ms() {
+    timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+// Le o Time.realtimeSinceStartup ~1x/s (thread principal: getter da Unity so
+// aqui). ServerBuffInfo.leftTime = startLeftTime - (realtime - startTime).
+void capture_clock() {
+    static const void* mi = nullptr;
+    static bool tried = false;
+    long long now = monotonic_ms();
+    if (now - g_rt_ms.load(std::memory_order_relaxed) < 1000) return;
+    if (!mi && !tried) {
+        tried = true;
+        size_t count = 0;
+        const void** asms = g_api.domain_get_assemblies(g_api.domain_get(), &count);
+        for (size_t i = 0; i < count && !mi; i++) {
+            const void* img = g_api.assembly_get_image(asms[i]);
+            const char* an = img ? g_api.image_get_name(img) : nullptr;
+            if (!an || std::strncmp(an, "UnityEngine.CoreModule", 22) != 0) continue;
+            void* k = g_api.class_from_name(img, "UnityEngine", "Time");
+            mi = k ? g_api.class_get_method_from_name(k, "get_realtimeSinceStartup", 0) : nullptr;
+        }
+        if (!mi) LOGE("relogio: Time.get_realtimeSinceStartup nao achado");
+    }
+    if (!mi) return;
+    void* exc = nullptr;
+    void* r = g_api.runtime_invoke(mi, nullptr, nullptr, &exc);
+    if (exc || !r) return;
+    g_rt.store(*reinterpret_cast<float*>((char*)r + 0x10), std::memory_order_relaxed);
+    g_rt_ms.store(now, std::memory_order_relaxed);
+}
+
 void drain_queue() {
+    capture_clock();
     if (!g_has_actions.load(std::memory_order_relaxed)) return;  // frame sem acao
     std::vector<Action> todo;
     {
@@ -1545,6 +1586,20 @@ void hook_death(void* self, void* deathInfo, const void* mi) {
     if (!logged.exchange(true)) LOG("hook_death CHAMADO (1a vez)");
     if (g_orig_death) g_orig_death(self, deathInfo, mi);
     g_death_events.fetch_add(1, std::memory_order_relaxed);
+    // Abate do char: Killer (DeathInfo.get_Killer) igual ao get_ID do jogador.
+    // Thread principal: chama os getters direto.
+    void* player = current_player(g_api, g_xmain);
+    if (!player || !deathInfo || !g_api.object_get_class) return;
+    auto u64_of = [](void* obj, const char* name) -> uint64_t {
+        void* c = g_api.object_get_class(obj);
+        const void* m = c ? g_api.class_get_method_from_name(c, name, 0) : nullptr;
+        if (!m) return 0;
+        void* exc = nullptr;
+        void* r = g_api.runtime_invoke(m, obj, nullptr, &exc);
+        return (exc || !r) ? 0 : *reinterpret_cast<uint64_t*>((char*)r + 0x10);
+    };
+    uint64_t killer = u64_of(deathInfo, "get_Killer");
+    if (killer && killer == u64_of(player, "get_ID")) g_kills.fetch_add(1, std::memory_order_relaxed);
 }
 
 // Acha uma classe de gameplay pelo nome (primeira em assembly nao-sistema).
@@ -2378,6 +2433,96 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
     if (tag == "ENTS" && g_ready) {
         std::lock_guard<std::mutex> lk(g_read_mu);
         return read_entities_json((float)std::atof(body.c_str()));
+    }
+    // BUFS: buffs do char (XBuffComponent._ServerBuffList) =
+    // [id, nivel, pilha, restante s, total s, "chave do nome"]. Restante -1 = sem
+    // tempo (buff fixo) ou relogio ainda nao lido. So campos (nada da Unity): o
+    // relogio vem do capture_clock da thread principal.
+    if (tag == "BUFS" && g_ready) {
+        std::lock_guard<std::mutex> lk(g_read_mu);
+        void* mgrc = find_class_by_name("XEntityMgr");
+        void* mgr = mgrc ? resolve_singleton(mgrc) : nullptr;
+        if (!plausible_obj(mgr)) return "{\"ok\":false,\"erro\":\"XEntityMgr nulo\"}";
+        FaultGuard guard;
+        void* player = nullptr;
+        if (!safe_read(&player, (char*)mgr + OFF_ENTITYMGR_PLAYER, sizeof(player)) || !plausible_obj(player))
+            return "{\"ok\":false,\"erro\":\"jogador nulo (nao esta em mundo?)\"}";
+        static size_t off_buff = 0, off_list = 0, o_id = 0, o_lv = 0, o_stack = 0, o_st = 0, o_sl = 0, o_ui = 0, o_info = 0, o_name = 0;
+        if (!off_buff) {
+            void* f = find_field_in_chain(safe_class_of(player), "_buff");
+            if (f) off_buff = g_api.field_get_offset(f);
+        }
+        void* bc = nullptr;
+        if (!off_buff || !safe_read(&bc, (char*)player + off_buff, sizeof(bc)) || !plausible_obj(bc))
+            return "{\"ok\":false,\"erro\":\"sem _buff\"}";
+        if (!off_list) {
+            void* f = find_field_in_chain(safe_class_of(bc), "_ServerBuffList");
+            if (f) off_list = g_api.field_get_offset(f);
+        }
+        void* list = nullptr;
+        if (!off_list || !safe_read(&list, (char*)bc + off_list, sizeof(list)) || !plausible_obj(list))
+            return "{\"ok\":false,\"erro\":\"sem _ServerBuffList\"}";
+        void* items = nullptr;
+        int size = 0;
+        safe_read(&items, (char*)list + 0x10, sizeof(items));
+        safe_read(&size, (char*)list + 0x18, 4);
+        long long age = monotonic_ms() - g_rt_ms.load(std::memory_order_relaxed);
+        float rt = g_rt.load(std::memory_order_relaxed);
+        bool clock = rt >= 0 && age < 10000;
+        float now = clock ? rt + (float)age / 1000.0f : 0;
+        char buf[160];
+        std::snprintf(buf, sizeof(buf), "{\"ok\":true,\"clock\":%s,\"buffs\":[", clock ? "true" : "false");
+        std::string j = buf;
+        int n = 0;
+        for (int i = 0; plausible_obj(items) && i < size && i < 60; i++) {
+            void* b = nullptr;
+            if (!safe_read(&b, (char*)items + 0x20 + (size_t)i * 8, sizeof(b)) || !plausible_obj(b)) continue;
+            if (!o_id) {
+                void* c = safe_class_of(b);
+                void* f1 = find_field_in_chain(c, "buffID");
+                void* f2 = find_field_in_chain(c, "buffLevel");
+                void* f3 = find_field_in_chain(c, "stackCount");
+                void* f4 = find_field_in_chain(c, "startTime");
+                void* f5 = find_field_in_chain(c, "startLeftTime");
+                void* f6 = find_field_in_chain(c, "m_UIBuffInfo");
+                if (!f1 || !f2 || !f3 || !f4 || !f5 || !f6) break;
+                o_id = g_api.field_get_offset(f1); o_lv = g_api.field_get_offset(f2); o_stack = g_api.field_get_offset(f3);
+                o_st = g_api.field_get_offset(f4); o_sl = g_api.field_get_offset(f5); o_ui = g_api.field_get_offset(f6);
+            }
+            uint32_t id = 0, lv = 0, stack = 0;
+            float st = 0, sl = 0;
+            safe_read(&id, (char*)b + o_id, 4);
+            safe_read(&lv, (char*)b + o_lv, 4);
+            safe_read(&stack, (char*)b + o_stack, 4);
+            safe_read(&st, (char*)b + o_st, 4);
+            safe_read(&sl, (char*)b + o_sl, 4);
+            // Nome: m_UIBuffInfo.buffInfo.BuffName (chave de traducao).
+            std::string key;
+            void* ui = nullptr;
+            if (safe_read(&ui, (char*)b + o_ui, sizeof(ui)) && plausible_obj(ui)) {
+                if (!o_info) {
+                    void* f = find_field_in_chain(safe_class_of(ui), "buffInfo");
+                    if (f) o_info = g_api.field_get_offset(f);
+                }
+                void* info = nullptr;
+                if (o_info && safe_read(&info, (char*)ui + o_info, sizeof(info)) && plausible_obj(info)) {
+                    if (!o_name) {
+                        void* f = find_field_in_chain(safe_class_of(info), "BuffName");
+                        if (f) o_name = g_api.field_get_offset(f);
+                    }
+                    void* s = nullptr;
+                    if (o_name && safe_read(&s, (char*)info + o_name, sizeof(s))) key = il2cpp_string_json(s);
+                }
+            }
+            float left = (clock && sl > 0) ? sl - (now - st) : -1;
+            if (left < 0 && sl > 0 && clock) left = 0;
+            std::snprintf(buf, sizeof(buf), "%s[%u,%u,%u,%.0f,%.0f,\"", n ? "," : "", id, lv, stack, left, sl);
+            j += buf;
+            j += key;
+            j += "\"]";
+            n++;
+        }
+        return j + "]}";
     }
     if (tag == "GETP" && g_boot_ready) {
         // GETP <Classe> [campo|getter ...] <getter|campo>: como o OBJV, segue o
