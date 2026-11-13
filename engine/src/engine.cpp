@@ -82,7 +82,7 @@ struct Action {
     // (Transform.Find, GetComponent) pode rodar.
     char xm_path[192];
     char xm_opath[8][160];
-    // method 15 (say): texto do chat em UTF-8 (a1 = canal) e o destino do privado.
+    // method 15 (CHAT): texto do chat em UTF-8 (a1 = canal) e o destino do privado.
     char say[1024];
     uint64_t say_to;
 };
@@ -1311,7 +1311,7 @@ void exec_auto_main(const Action& act) {
         return;
     }
 
-    // method 15 = say: XChatView.SendChatContent(texto, canal, ...), o mesmo
+    // method 15 = CHAT: XChatView.SendChatContent(texto, canal, ...), o mesmo
     // caminho do botao Enviar do chat (filtro de palavras e bloqueio do proprio
     // jogo). No privado o destino e o ChatFriendId da tela, trocado so durante a
     // chamada e devolvido depois.
@@ -2524,6 +2524,37 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
         std::snprintf(buf, sizeof(buf), "{\"ok\":true,\"enfileirado\":[%.1f,%.1f,%.1f]}", x, y, z);
         return buf;
     }
+    // CHAT <canal> <roleid> <hex>: manda uma mensagem no chat (method 15). Canal
+    // 1 Mundo, 2 Guilda, 7 Party, 3 Privado (roleid = destino; 0 nos outros).
+    // Texto em UTF-8 escrito em hex (pode ter espaco e acento), ate 1000 bytes.
+    // A resposta so confirma a fila: quem chama confere a mensagem no chat. Tag
+    // propria (nao SKIL): no engine antigo uma tag desconhecida so devolve o
+    // jogador, enquanto um SKIL desconhecido liga ou desliga a caca.
+    if (tag == "CHAT" && g_ready) {
+        std::vector<std::string> w = split_words(body);
+        if (w.size() != 3) return "{\"ok\":false,\"erro\":\"uso: CHAT canal roleid hex\"}";
+        int ch = std::atoi(w[0].c_str());
+        if (ch != 1 && ch != 2 && ch != 3 && ch != 7) return "{\"ok\":false,\"erro\":\"canal: 1 2 3 7\"}";
+        uint64_t to = std::strtoull(w[1].c_str(), nullptr, 10);
+        if (ch == 3 && to == 0) return "{\"ok\":false,\"erro\":\"privado sem destino\"}";
+        const std::string& hx = w[2];
+        Action act{};
+        if (hx.empty() || hx.size() % 2 || hx.size() / 2 >= sizeof(act.say))
+            return "{\"ok\":false,\"erro\":\"texto vazio ou longo demais\"}";
+        for (size_t i = 0; i < hx.size(); i += 2) {
+            unsigned v = 0;
+            if (std::sscanf(hx.c_str() + i, "%2x", &v) != 1 || v == 0)
+                return "{\"ok\":false,\"erro\":\"hex invalido\"}";
+            act.say[i / 2] = (char)v;
+        }
+        act.type = 2; act.method = 15; act.a1 = ch; act.say_to = to;
+        {
+            std::lock_guard<std::mutex> lk(g_queue_mu);
+            g_queue.push_back(act);
+            g_has_actions = true;
+        }
+        return "{\"ok\":true,\"say\":true}";
+    }
     if (tag == "SKIL" && g_boot_ready) {
         // Liga/desliga o auto-hunt. Default (corpo "1"/"0" ou {"on":N}):
         // SetAutoEnable(on, on). O corpo pode escolher o metodo/args para
@@ -2621,35 +2652,6 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
         // vao em texto pra thread principal (method 14), que resolve e invoca. A
         // resposta so confirma a fila: erro de caminho sai no logcat (SROENGINE),
         // e quem chama confere o efeito no estado do jogo.
-        // say <canal> <roleid> <hex>: manda uma mensagem no chat (method 15). Canal
-        // 1 Mundo, 2 Guilda, 7 Party, 3 Privado (roleid = destino; 0 nos outros).
-        // Texto em UTF-8 escrito em hex (pode ter espaco e acento), ate 1000 bytes.
-        // A resposta so confirma a fila: quem chama confere a mensagem no chat.
-        if (body.rfind("say ", 0) == 0) {
-            std::vector<std::string> w = split_words(body.substr(4));
-            if (w.size() != 3) return "{\"ok\":false,\"erro\":\"uso: say canal roleid hex\"}";
-            int ch = std::atoi(w[0].c_str());
-            if (ch != 1 && ch != 2 && ch != 3 && ch != 7) return "{\"ok\":false,\"erro\":\"canal: 1 2 3 7\"}";
-            uint64_t to = std::strtoull(w[1].c_str(), nullptr, 10);
-            if (ch == 3 && to == 0) return "{\"ok\":false,\"erro\":\"privado sem destino\"}";
-            const std::string& hx = w[2];
-            Action act{};
-            if (hx.empty() || hx.size() % 2 || hx.size() / 2 >= sizeof(act.say))
-                return "{\"ok\":false,\"erro\":\"texto vazio ou longo demais\"}";
-            for (size_t i = 0; i < hx.size(); i += 2) {
-                unsigned v = 0;
-                if (std::sscanf(hx.c_str() + i, "%2x", &v) != 1 || v == 0)
-                    return "{\"ok\":false,\"erro\":\"hex invalido\"}";
-                act.say[i / 2] = (char)v;
-            }
-            act.type = 2; act.method = 15; act.a1 = ch; act.say_to = to;
-            {
-                std::lock_guard<std::mutex> lk(g_queue_mu);
-                g_queue.push_back(act);
-                g_has_actions = true;
-            }
-            return "{\"ok\":true,\"say\":true}";
-        }
         if (body.rfind("callxm ", 0) == 0) {
             std::vector<std::string> all = split_words(body.substr(7));
             auto sep = std::find(all.begin(), all.end(), std::string("--"));
