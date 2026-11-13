@@ -372,6 +372,19 @@ test("HP baixo no ponto: troca pro ponto de reserva so fora de combate", () => {
   assert.equal(off.lowHpAtSpot, null);
 });
 
+test("seguindo o lider: o ponto fica de lado, sem desligar a caca nem sair andando", () => {
+  const spot = { scene: 100001, x: 2601, y: 73, z: 1781 };
+  const cfg = { ...DEFAULT_TRAIN_CONFIG, spot };
+  const far: TrainSnapshot = { ...alive(100), scene: 100001, pos: [2901, 73, 1781], following: true };
+  let p = trackTrain(newTrainProgress(0), far, 1000, cfg);
+  assert.equal(nextTrainStep(far, cfg, p, 1000 + LEAVE_AFTER_MS).kind, "wait"); // sem following seria "leave"
+  assert.equal((nextTrainStep({ ...far, following: false }, cfg, p, 1000 + LEAVE_AFTER_MS) as { id?: string }).id, "leave");
+  // EXP parado seguindo: nao desliga e religa (pararia a IA do Follow).
+  p = afterTrainAction(p, "hunt", IDLE_MS);
+  assert.notEqual((nextTrainStep(far, cfg, p, STUCK_RESET_MS) as { id?: string }).id, "reset");
+  assert.equal(shouldSeek(far, newTrainProgress(0), SEEK_IDLE_MS, -Infinity), false);
+});
+
 test("preso no ponto (Heroi 06:13): desliga e religa a caca uma vez, depois vai pro ponto de reserva fora de combate", () => {
   const cfg = { ...DEFAULT_TRAIN_CONFIG, spots: [A, B] };
   const hit = (hp: number) => inMap(1325, 620, { hp, maxHp: 16181, inCombat: true });

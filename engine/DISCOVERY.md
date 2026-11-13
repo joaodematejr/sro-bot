@@ -690,6 +690,23 @@ carregar antes de despejar.
   #6003, auto-join, 4/6 -> 6/6, em ~4 s; `get_bInTeam` true). Sem extensao no engine.
 - Meu time: `XTeamDocument _MyTeam` (`members` List<XTeamMember>: `briefData name/level/
   uid`, `sceneID` do membro, `currHp`). O `ReqTeamOp` (7 args) segue sem uso.
+- Party completa (2026-11-13, codigo do cliente; caminhos do GETP conferidos ao vivo, so leitura):
+  criar = `ReqTeamOp` op 1 com `o` nulo (usa o ajuste padrao, expID 1 "Hunt"; o jogo abre a
+  `XTeamView` no sucesso); convidar = op 12 com `q:<roleid>`; entrada automatica = op 36 `q:1`
+  (liga/desliga; ler `_MyTeam teamBrief IsAutoJoin`); pedidos = op 38 (busca, enche
+  `XTeamDocument _joinList`) e op 40 (aceita todos). Quem da pra convidar:
+  `callx XTeamInviteDocument ReqInviteList 1 -- i:<3 amigo|2 guilda|1 mapa>` e
+  `XTeamInviteDocument m_InviteList` (so livres; `name`, `uid` 64 bits).
+- Convite recebido: `TeamNotifyModalDlg m_CurrentInviteData` (`inviteID`, `invitorName`,
+  `invitorRelation m_Relation` 1 amigo, 2 guilda, 4 outro; nulo sem convite). Aceitar:
+  `callp TeamNotifyModalDlg _OnInviteAgreeBtnClick 1` (o botao; fecha a janela). Sem resposta a
+  janela recusa sozinha no fim do tempo.
+- Seguir o lider (Auto Trace): op 28 `TEAM_MEMBERS_FOLLOW_LEADER` e liga/desliga; estado em
+  `XTeamFightMgr get_IsFollowing`. Seguindo, `XTeamFightMgr.StartFollow` troca a arvore da IA
+  pela `AutoFight_Team` e liga a IA: anda atras do lider (ate de mapa, pelo TeleportNavigate)
+  e caca em volta dele (18 m). `StopFollow` DESLIGA a IA: quem parar de seguir perto de
+  monstro precisa religar a caca. O `ResetBehaviorTree` (e o `SetAutoEnable` do liga caca)
+  respeita o Follow.
 
 ## Auto-play: ponto de nascimento da IA (2026-11-07)
 

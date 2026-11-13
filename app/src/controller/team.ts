@@ -13,6 +13,14 @@
 export interface TeamConfig {
   join: boolean; // sem time, entra num time aberto
   sameMapOnly: boolean; // so times com o lider no mesmo mapa (prefixo do canal)
+  // Party (controller/party.ts):
+  lead?: boolean; // sem time, cria um e fica de lider (no lugar do join)
+  openAutoJoin?: boolean; // lider: entrada automatica ligada (quem pede entra sozinho)
+  acceptRequests?: boolean; // lider: aceita os pedidos de entrada
+  invite?: string[]; // lider: convida estes nomes quando ha vaga
+  acceptFrom?: string[]; // sem time: aceita convite destes nomes
+  acceptFriendsGuild?: boolean; // sem time: aceita convite de amigo ou da guilda
+  follow?: boolean; // membro: segue o lider (o Follow do jogo)
 }
 
 export interface TeamBrief {
@@ -69,7 +77,7 @@ export const LEAVE_TEAM_BODY = "callp XTeamView _MyTeamHandler _DoLeaveFromTeam 
 // proxima checagem. Com 2 ou mais fica: sair e garantido, entrar nao (o servidor
 // recusa calado as vezes), e trocar 5% por 0% e pior.
 export function shouldLeaveTeam(members: number | undefined, cfg: TeamConfig): boolean {
-  return cfg.join && members !== undefined && members <= 1;
+  return cfg.join && !cfg.lead && members !== undefined && members <= 1;
 }
 
 type Query = (tag: string, body: string) => Promise<Record<string, unknown>>;

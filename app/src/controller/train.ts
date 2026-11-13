@@ -286,6 +286,7 @@ export interface TrainSnapshot {
   playersNear?: number; // jogadores fora do time a PLAYER_NEAR_M do char (lido de tempos em tempos)
   enemiesNear?: number; // monstros no raio da regra de troca (lido de tempos em tempos)
   enemiesClose?: number; // monstros a LEAVE_SAFE_RADIUS_M do char (lido so antes de ir pra cidade)
+  following?: boolean; // seguindo o lider do time (Follow do jogo): sem ponto, o lider leva
 }
 
 // O que impede desligar a caca pra ir pra cidade agora (null = pode). Texto sem
@@ -576,7 +577,8 @@ export function nextTrainStep(s: TrainSnapshot | null, cfg: TrainConfig, p: Trai
     return go ?? { kind: "done", reason: `${reason}${AT_HOME}` };
   }
 
-  const spots = trainSpots(cfg);
+  // Seguindo o lider o ponto nao vale: o jogo anda atras dele e caca em volta.
+  const spots = s.following ? [] : trainSpots(cfg);
   const spot = spots.length ? spots[p.spotIdx % spots.length] : undefined;
   if (spot) {
     // Troca de ponto (so com mais de um e fora de combate). Morte a caminho do
@@ -666,7 +668,8 @@ export function nextTrainStep(s: TrainSnapshot | null, cfg: TrainConfig, p: Trai
   }
   // Religar com a caca ja ligada nao muda o alvo do auto-play; desligar e religar
   // (RESET_GAP_MS sem caca) muda. Uma vez por periodo parado.
-  if (now - p.expAt >= STUCK_RESET_MS && p.resetAt <= p.expAt && !p.goingToSpot)
+  // Seguindo, desligar a caca pararia a IA do Follow (e o lider pode estar so andando).
+  if (now - p.expAt >= STUCK_RESET_MS && p.resetAt <= p.expAt && !p.goingToSpot && !s.following)
     return { kind: "act", id: "reset", name: `EXP parado ha ${Math.round((now - p.expAt) / 60000)} min: desligar e religar a caca`, tag: "SKIL", body: HUNT_OFF };
   if (now - p.lastGainAt >= IDLE_MS && now - p.huntSentAt >= HUNT_COOLDOWN_MS)
     return { kind: "act", id: "hunt", name: "religar a caca (EXP parado)", tag: "SKIL", body: HUNT_ON };
@@ -951,7 +954,7 @@ export async function readPlayersNear(q: EngineQuery, x: number, z: number, radi
 // Hora de procurar monstro? (so o que nao precisa ler as entidades)
 export function shouldSeek(s: TrainSnapshot | null, p: TrainProgress, now: number, lastSeekAt: number): boolean {
   if (!s || !s.inWorld || s.dead || s.inCombat || !s.pos || s.scene === undefined) return false;
-  if (p.goingToSpot || p.stopReason || p.pauseReason) return false;
+  if (p.goingToSpot || p.stopReason || p.pauseReason || s.following) return false;
   if (s.hp !== undefined && s.maxHp && (100 * s.hp) / s.maxHp < LEAVE_MIN_HP_PCT) return false;
   return now - p.expAt >= SEEK_IDLE_MS && now - lastSeekAt >= SEEK_COOLDOWN_MS;
 }

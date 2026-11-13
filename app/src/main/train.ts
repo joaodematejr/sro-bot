@@ -67,6 +67,26 @@ import {
   type TeamConfig,
   teamBonusPct,
 } from "../controller/team";
+import {
+  afterPartyStep,
+  CLOSE_TEAM_VIEW_BODY,
+  CREATE_TEAM_BODY,
+  findInviteCandidates,
+  FOLLOW_LOST_WAIT_MS,
+  FOLLOW_TOGGLE_BODY,
+  followLost,
+  inviteBody,
+  newPartyMemory,
+  nextPartyStep,
+  partyStepText,
+  partyWanted,
+  type PartyStep,
+  readParty,
+  ACCEPT_INVITE_BODY,
+  ACCEPT_REQUESTS_BODY,
+  AUTO_JOIN_TOGGLE_BODY,
+  FETCH_REQUESTS_BODY,
+} from "../controller/party";
 import { maybeUseBuffs } from "./booster";
 import { BERSERK_CLICK, BERSERK_EVERY_MS, BERSERK_VISIBLE, DEVIL_CLICK, DEVIL_EVERY_MS, shouldBerserk } from "../controller/berserk";
 import { LEVELING_OPEN_BODY, levelingPhase, levelingText, readLeveling, shouldOpenLeveling } from "../controller/leveling";
@@ -255,6 +275,49 @@ async function ensureTeam(q: Query, level: number, cfg: TeamConfig, log: Log): P
   log("nao entrou em nenhum time agora; tento de novo depois.");
 }
 
+// Um passo de party (controller/party.ts). Criar abre a janela do time no jogo:
+// fecha de novo se ela estava fechada antes.
+async function runPartyStep(q: Query, step: PartyStep, log: Log): Promise<void> {
+  const text = partyStepText(step);
+  if (text) log(text + ".");
+  switch (step.kind) {
+    case "accept":
+      await q("SKIL", ACCEPT_INVITE_BODY);
+      await sleep(3000);
+      log((await q("GETP", "XTeamDocument get_bInTeam")).bool === true ? "entrou no time do convite." : "o convite nao deu certo (expirou ou o time encheu).");
+      return;
+    case "create": {
+      const open = (await q("GETP", "XTeamView IsVisible")).bool === true;
+      await q("SKIL", CREATE_TEAM_BODY);
+      await sleep(2500);
+      if (!open && (await q("GETP", "XTeamView IsVisible")).bool === true) await q("SKIL", CLOSE_TEAM_VIEW_BODY);
+      log((await q("GETP", "XTeamDocument get_bIsLeader")).bool === true ? "time criado: lider." : "o jogo nao criou o time agora; tento de novo em 1 min.");
+      return;
+    }
+    case "autoJoin":
+      await q("SKIL", AUTO_JOIN_TOGGLE_BODY);
+      return;
+    case "fetch":
+      await q("SKIL", FETCH_REQUESTS_BODY);
+      return;
+    case "acceptRequests":
+      await q("SKIL", ACCEPT_REQUESTS_BODY);
+      return;
+    case "invite": {
+      const found = await findInviteCandidates(q, step.names, sleep);
+      for (const c of found) await q("SKIL", inviteBody(c.roleId));
+      const miss = step.names.filter((n) => !found.some((c) => c.name.toLowerCase() === n.trim().toLowerCase()));
+      if (found.length) log(`convite de time mandado pra ${found.map((c) => c.name).join(", ")}.`);
+      else log(`ninguem da lista de convite esta livre agora (${miss.join(", ")}); tento de novo em 3 min.`);
+      return;
+    }
+    case "follow":
+      await q("SKIL", FOLLOW_TOGGLE_BODY);
+      await sleep(2000);
+      return;
+  }
+}
+
 export async function runTrain(
   host: string,
   port: number,
@@ -336,10 +399,50 @@ export async function runTrain(
   let skillsCheckedLevel = -1;
   let lastSupply = "";
   let pendingSupply = "";
+  // Party: criar/manter o time, aceitar convite e seguir o lider.
+  const partyCfg = partyWanted(cfg.team) ? cfg.team : undefined;
+  let partyMem = newPartyMemory();
+  let wasFollowing = false;
+  // Pausa (outra atividade vai rodar) seguindo o lider: para de seguir e deixa a
+  // caca ligada aqui, como no Treino sem time. O Follow levaria o char embora.
+  const releaseFollow = async () => {
+    if (!wasFollowing || pauseRequested === null) return;
+    await q("SKIL", FOLLOW_TOGGLE_BODY);
+    await sleep(1500);
+    await q("SKIL", RESET_BORN_BODY);
+    await q("SKIL", HUNT_ON);
+    wasFollowing = false;
+    log("pausa: parou de seguir o lider; caca ligada aqui.");
+  };
   while (!stopRequested) {
     const now = Date.now();
     const s = await readTrainSnapshot(q);
-    const spot = spots.length ? spots[prog.spotIdx % spots.length] : undefined;
+    const party = partyCfg && s?.inWorld && !s.dead ? await readParty(q, partyCfg).catch(() => undefined) : undefined;
+    if (party && s) {
+      const followingNow = !!partyCfg?.follow && party.inTeam && !party.leader && party.following === true;
+      s.following = followingNow;
+      // O jogo parou de seguir (ou o char saiu do time seguindo): o StopFollow
+      // desliga a IA. Religa a caca na hora; pede de novo depois.
+      if (followLost(wasFollowing, followingNow)) {
+        partyMem = { ...partyMem, followLostAt: now };
+        await q("SKIL", RESET_BORN_BODY);
+        await q("SKIL", HUNT_ON);
+        log(`parou de seguir o lider: caca religada aqui${party.inTeam ? `; peco de novo em ${FOLLOW_LOST_WAIT_MS / 60000} min` : ""}.`);
+      }
+      if (followingNow && !wasFollowing) {
+        log("seguindo o lider: o ponto salvo fica de lado enquanto isso.");
+        prog = { ...prog, goingToSpot: false, farSince: null };
+      }
+      wasFollowing = followingNow;
+      if (!prog.stopReason && pauseRequested === null) {
+        const ps = nextPartyStep(party, partyCfg!, partyMem, now);
+        if (ps.kind !== "none") {
+          partyMem = afterPartyStep(partyMem, ps, now);
+          await runPartyStep(q, ps, log).catch((e) => log("time: falhou (" + String(e).slice(0, 100) + ")."));
+        }
+      }
+    }
+    const spot = spots.length && !s?.following ? spots[prog.spotIdx % spots.length] : undefined;
     if (s?.inWorld && !s.dead) {
       if (cfg.stopMinGold && now >= nextGold) {
         nextGold = now + GOLD_EVERY_MS;
@@ -383,7 +486,7 @@ export async function runTrain(
         || x10LeaveDue(cfg, prog) || primaryBackDue(cfg, prog, now) || dodgePlan({ ...s, ...extra }, cfg, prog, now) !== null;
       extra.enemiesClose = leaving && !s.inCombat && s.pos && !inSafeTown(s, cfg) ? await readEnemiesNear(q, s.pos[0], s.pos[2], LEAVE_SAFE_RADIUS_M) : undefined;
     }
-    if (cfg.team?.join && s?.inWorld && !s.dead && now >= nextTeam) {
+    if (cfg.team?.join && !cfg.team.lead && s?.inWorld && !s.dead && now >= nextTeam) {
       nextTeam = now + TEAM_EVERY_MS;
       await ensureTeam(q, s.level, cfg.team, log);
     }
@@ -496,11 +599,19 @@ export async function runTrain(
         log("caca religada: parou antes de chegar na cidade.");
       }
       log(`concluido: ${step.reason}.`);
+      await releaseFollow();
       await restore();
       return { ok: true, deaths: prog.deaths, reason: step.reason };
     }
     if (step.kind === "act") {
       log(step.name);
+      // Indo pra cidade seguindo o lider: para de seguir antes (o leaveBlock do
+      // passo "home" ja conferiu combate, HP e monstro perto).
+      if (step.id === "home" && wasFollowing) {
+        await q("SKIL", FOLLOW_TOGGLE_BODY);
+        await sleep(1500);
+        wasFollowing = false;
+      }
       // Chegou no ponto: a IA passa a vagar em volta daqui (e nao do lugar onde
       // o char nasceu/reviveu).
       // Defesa no caminho: andar desliga a IA; o nascimento passa pro lugar atual
@@ -554,6 +665,7 @@ export async function runTrain(
       log("caca religada: parado no meio da viagem.");
     }
   }
+  await releaseFollow();
   log("parado.");
   await restore();
   return { ok: false, erro: "parado", deaths: prog.deaths };
