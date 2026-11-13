@@ -4,6 +4,11 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** atividade **Guild Boss** (Atividades > Guild Boss, desligada por padrao), por metodo: so com o evento aberto (ou o char ja na arena) para o Treino, sai da party (ReqTeamOp 7), abre o painel do World Boss e entra pelo Challenge, religa o auto-play na arena e pega a recompensa no fim. Fechado, nao mexe em nada e confere de novo a cada minuto. A opcao de buffs por gold e a safe zone do golpe supremo ja estao no painel, mas o fluxo ainda nao compra buff nem detecta o golpe. (contribuicao de `RicardoGuedes555`)
+- **App:** Continental: com os espacos cheios de roxo ou melhor, so para de rolar se nao houver bau raro nas casas a frente; com bau dourado a frente, descarta um roxo trancado pra abrir vaga; bau dourado nao perde valor com os espacos cheios. Nova tentativa em 1 min depois de uma rodada que falhou (era 1 h). (contribuicao de `RicardoGuedes555`)
+- **App:** Continental com **Foco de Build** (Equilibrado, INT ou STR) na regiao automatica por cards: soma 35% aos mapas impares (INT) ou pares (STR). (contribuicao de `RicardoGuedes555`)
+- **App:** desmarcar uma atividade com o bot rodando tira o "feito hoje" dela e para o Guild Boss, a Torre ou o Continental; ligar a Torre (ou o Guild Boss) na hora para o loop do Treino antes e religa depois. As diarias pendentes sao conferidas ja no primeiro ciclo. (contribuicao de `RicardoGuedes555`)
+
 ## [0.148.0] - 2026-11-13
 
 - **App:** o **Mapa** mostra **paredes e areas bloqueadas**: o navmesh da cena (o mesmo que o jogo usa pra achar caminho) pinta a area andavel um pouco mais clara, o resto fica escuro e a borda vira parede. Lido uma vez por mapa e guardado na pasta de dados (`navmesh/<cena>.txt`); nas proximas vezes abre na hora.

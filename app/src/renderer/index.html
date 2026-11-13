@@ -334,6 +334,34 @@
               <div class="panel p-4 space-y-3">
                 <div class="flex items-center justify-between">
                   <div>
+                    <div class="text-sm font-semibold">Guild Boss</div>
+                    <div class="text-xs text-muted">participa do Boss da Guilda automaticamente: sai da party se necessario, compra buffs por gold e desvia na Safe Zone durante o golpe supremo</div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer select-none"><input type="checkbox" id="act-guildboss" class="accent-gold w-4 h-4" /> Ativa</label>
+                    <span id="gb-status" class="pill bg-ink-600 text-muted">parado</span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-300">
+                  <label class="flex items-center gap-2">Buffs por Gold
+                    <select id="gb-buffs" class="bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100">
+                      <option value="0">Nenhum</option>
+                      <option value="1">1 buff (10k gold)</option>
+                      <option value="3">3 buffs (30k gold)</option>
+                      <option value="5" selected>5 buffs (50k gold)</option>
+                      <option value="10">10 buffs (100k gold)</option>
+                    </select>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="gb-dodge" class="accent-gold w-4 h-4" checked /> Desviar na Safe Zone (golpe supremo)</label>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button id="btn-gb-save" class="btn btn-gold">Salvar config</button>
+                  <span class="text-xs text-muted">só gasta gold nos buffs, nunca Silk; sai de party antes de entrar</span>
+                </div>
+              </div>
+              <div class="panel p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
                     <div class="text-sm font-semibold">Baús de atividade diária</div>
                     <div class="text-xs text-muted">pega os baús de 30, 60, 90, 120 e 150 pontos assim que liberam (confere a cada 15 min, com a caça ligada); os pontos zeram às 18:00</div>
                   </div>
@@ -403,6 +431,14 @@
                       <option value="5">Eastern Europe (Lv80)</option>
                       <option value="6">Asia Minor (Lv85)</option>
                       <option value="7">Central Asia (Lv90)</option>
+                    </select>
+                  </label>
+                  <label class="flex items-center gap-2">
+                    Foco de Build
+                    <select id="ce-build" class="bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100">
+                      <option value="all">Equilibrado / Qualquer</option>
+                      <option value="int">Build INT (Magia / Elemental)</option>
+                      <option value="str">Build STR (Físico / Crítico)</option>
                     </select>
                   </label>
                   <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="ce-green" class="accent-gold w-4 h-4" /> Ignorar baú verde</label>

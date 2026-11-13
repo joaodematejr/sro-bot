@@ -176,6 +176,12 @@ test("fim: sem dados, so abrir baus, 3 roxos ou melhores", () => {
   const stop = { ...DEFAULT_CONTINENTAL_CONFIG, stopWhenAllPurple: true };
   const purple = [box(0, TIER_PURPLE, 2), box(1, TIER_ORANGE, 1), box(2, TIER_PURPLE, 1)];
   assert.equal(id(snap({ slots: purple }), stop), "close");
+  // Com bau roxo a frente nas proximas casas, nao fecha: continua rolando para buscar o bau!
+  const purpleAhead = [{ type: GRID_BOX, tier: TIER_PURPLE, used: false }, { type: GRID_NORMAL, tier: 0 }];
+  assert.equal(id(snap({ slots: purple, ahead: purpleAhead }), stop), "roll");
+  // Com bau dourado a frente e espacos cheios com roxo trancado, descarta o roxo para abrir vaga ao dourado:
+  const orangeAhead = [{ type: GRID_BOX, tier: TIER_ORANGE, used: false }, { type: GRID_NORMAL, tier: 0 }];
+  assert.equal(id(snap({ slots: purple, ahead: orangeAhead }), stop), "discard");
   assert.equal(id(snap({ slots: purple })), "roll"); // desligado continua rolando
 });
 

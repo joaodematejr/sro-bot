@@ -117,6 +117,9 @@ declare global {
       stopFirm: () => Promise<void>;
       runGuild: (cfg: GuildUiConfig) => Promise<{ ok: boolean; erro?: string; done?: number }>;
       stopGuild: () => Promise<void>;
+      runGuildBoss: (cfg: GuildBossUiConfig) => Promise<{ ok: boolean; erro?: string }>;
+      stopGuildBoss: () => Promise<void>;
+      guildBossOpen: () => Promise<boolean>;
       previewCardAlbum: (cfg: CardAlbumUiConfig) => Promise<{
         ok: boolean;
         erro?: string;
@@ -764,6 +767,77 @@ async function runGuildActivityInner(): Promise<boolean> {
   return r.ok;
 }
 
+// ---- Guild Boss ----
+
+interface GuildBossUiConfig {
+  enabled: boolean;
+  goldBuffsMax: number;
+  dodgeSupreme: boolean;
+  autoFight: boolean;
+}
+
+function readGuildBossUi(): GuildBossUiConfig {
+  return {
+    enabled: isChecked("act-guildboss"),
+    goldBuffsMax: Number(($("gb-buffs") as HTMLSelectElement)?.value ?? "5"),
+    dodgeSupreme: isChecked("gb-dodge"),
+    autoFight: true,
+  };
+}
+
+function saveGuildBossConfig(): void {
+  try {
+    localStorage.setItem("guildBossConfig", JSON.stringify(readGuildBossUi()));
+  } catch {
+    /* ignora */
+  }
+}
+
+function loadGuildBossConfig(): void {
+  try {
+    const raw = localStorage.getItem("guildBossConfig");
+    if (!raw) return;
+    const c = JSON.parse(raw) as Partial<GuildBossUiConfig>;
+    if (typeof c.goldBuffsMax === "number") {
+      const sel = $("gb-buffs") as HTMLSelectElement;
+      if (sel) sel.value = String(c.goldBuffsMax);
+    }
+    if (typeof c.dodgeSupreme === "boolean") {
+      const chk = $("gb-dodge") as HTMLInputElement;
+      if (chk) chk.checked = c.dodgeSupreme;
+    }
+  } catch {
+    /* ignora */
+  }
+}
+
+function setGbStatus(text: string, cls: string): void {
+  const el = $("gb-status");
+  if (el) {
+    el.textContent = text;
+    el.className = "pill " + cls;
+  }
+}
+
+async function runGuildBossActivityInner(): Promise<boolean> {
+  log("atividade Guild Boss ativa: rodando...");
+  setGbStatus("rodando", "bg-ink-600 text-warn");
+  const r = await window.sro.runGuildBoss(readGuildBossUi());
+  if (r.ok) {
+    setGbStatus("concluido", "bg-ink-600 text-ok");
+    log("Guild Boss concluido.");
+  } else if (r.erro === "fechado") {
+    setGbStatus("aguardando abertura", "bg-ink-600 text-muted");
+  } else if (r.erro === "parado") {
+    setGbStatus("parado", "bg-ink-600 text-muted");
+    log("Guild Boss parado.");
+  } else {
+    setGbStatus("falhou", "bg-ink-600 text-danger");
+    log("Guild Boss falhou: " + (r.erro ?? "erro"));
+  }
+  return r.ok;
+}
+
 // ---- Album de Cards ----
 
 interface CardSurplusUi {
@@ -911,6 +985,33 @@ async function maybeRunCardAlbum(): Promise<void> {
     if (!ok) cardAlbumNextAt = Date.now() + CARDALBUM_RETRY_MS;
   } finally {
     cardAlbumBusy = false;
+  }
+}
+
+let gbBusy = false;
+let gbLastRunAt = 0;
+async function maybeRunGuildBoss(): Promise<void> {
+  if (!polling || !isChecked("act-guildboss") || gbBusy || activitiesRunning || contBusy || watchdogBusy || loggingIn || outOfWorldSince !== 0) return;
+  if (Date.now() - gbLastRunAt < 60 * 1000) return;
+  gbLastRunAt = Date.now();
+  gbBusy = true;
+  try {
+    // Fechado (quase o dia todo): nao para o Treino nem mexe na party.
+    if (!(await window.sro.guildBossOpen().catch(() => false))) {
+      setGbStatus("aguardando abertura", "bg-ink-600 text-muted");
+      return;
+    }
+    const wasTraining = trainRunning;
+    if (wasTraining) {
+      if (!(await stopTrainLoop())) return;
+    }
+    const ok = await runGuildBossActivity();
+    if (ok) markDone("act-guildboss");
+    if (wasTraining && polling && isChecked("act-train")) {
+      resumeTrainLater("do Guild Boss");
+    }
+  } finally {
+    gbBusy = false;
   }
 }
 
@@ -1280,6 +1381,7 @@ function saveTrainConfig(): void {
 
 interface ContinentalUiConfig {
   mapId: number;
+  buildFocus?: "all" | "int" | "str";
   ignoreGreen: boolean;
   ignoreBlue: boolean;
   restartWhenStuck: boolean;
@@ -1313,8 +1415,10 @@ function loadContConfig(): ContinentalUiConfig {
 function readContUi(): ContinentalUiConfig {
   const chk = (id: string) => ($(id) as HTMLInputElement).checked;
   const map = parseInt(($("ce-map") as HTMLSelectElement).value, 10);
+  const bf = ($("ce-build") as HTMLSelectElement)?.value as "all" | "int" | "str" | undefined;
   return {
     mapId: Number.isFinite(map) ? map : CONT_DEFAULT.mapId,
+    buildFocus: bf || "all",
     ignoreGreen: chk("ce-green"),
     ignoreBlue: chk("ce-blue"),
     restartWhenStuck: chk("ce-restart"),
@@ -1326,6 +1430,7 @@ function readContUi(): ContinentalUiConfig {
 
 function applyContUi(c: ContinentalUiConfig): void {
   ($("ce-map") as HTMLSelectElement).value = String(c.mapId);
+  if ($("ce-build") && c.buildFocus) ($("ce-build") as HTMLSelectElement).value = c.buildFocus;
   ($("ce-green") as HTMLInputElement).checked = c.ignoreGreen;
   ($("ce-blue") as HTMLInputElement).checked = c.ignoreBlue;
   ($("ce-restart") as HTMLInputElement).checked = c.restartWhenStuck;
@@ -1473,7 +1578,7 @@ async function unsafeToSwitch(): Promise<string> {
 // Continental por tempo: os dados recarregam (1 por char a cada ~1h30, ate 10),
 // entao "uma vez por dia" deixava os dados parados em 10/10. Roda a cada 12 h.
 const CONT_EVERY_MS = 12 * 3600 * 1000;
-const CONT_RETRY_MS = 3600 * 1000;
+const CONT_RETRY_MS = 60 * 1000; // 1 min em caso de falha/HP baixo (era 1h)
 let contBusy = false;
 let lastTrainReason = ""; // por que o ultimo treino concluiu
 
@@ -1753,6 +1858,16 @@ function markDone(id: string): void {
   }
 }
 
+function unmarkDone(id: string): void {
+  try {
+    const done = { ...activitiesDone() };
+    delete done[id];
+    localStorage.setItem("activitiesDone", JSON.stringify(done));
+  } catch {
+    /* sem storage */
+  }
+}
+
 const skipLogged = new Set<string>();
 
 // Atividade de uma vez por dia: pula se ja concluiu hoje. Antes cada reconexao
@@ -1787,7 +1902,7 @@ async function runOncePerDay(id: string, label: string, fn: () => Promise<boolea
 // Iniciar bot ou numa reconexao (em 2026-11-08 nada rodou na virada). Faz o
 // mesmo do Iniciar bot: para o loop do Treino (a caca do jogo segue ligada),
 // roda as pendentes e religa o Treino.
-let dailyDay = gameDay();
+let dailyDay = 0; // 0 para checar diarias pendentes no primeiro ciclo
 async function maybeRunDailies(): Promise<void> {
   const day = gameDay();
   if (!polling || activitiesRunning || contBusy || watchdogBusy || loggingIn) return;
@@ -1876,6 +1991,7 @@ async function stopActivities(): Promise<void> {
   await window.sro.stopContinental();
   await window.sro.stopFirm();
   await window.sro.stopGuild();
+  await window.sro.stopGuildBoss();
   await window.sro.stopCardAlbum();
   if (isChecked("act-train")) await runTrainActivity(false);
 }
@@ -1885,6 +2001,12 @@ async function stopActivities(): Promise<void> {
 async function onActivityToggle(id: string): Promise<void> {
   if (!polling) return; // so age com o bot iniciado
   const on = isChecked(id);
+  if (!on) {
+    unmarkDone(id);
+    if (id === "act-guildboss") await window.sro.stopGuildBoss();
+    if (id === "act-tower") await window.sro.stopTower();
+    if (id === "act-cont") await window.sro.stopContinental();
+  }
   if (id === "act-train") {
     if (!on) {
       await runTrainActivity(false);
@@ -1895,7 +2017,19 @@ async function onActivityToggle(id: string): Promise<void> {
     }
   } else if (id === "act-tower" && on) {
     if (await waitInWorld()) {
+      if (trainRunning) await stopTrainLoop();
       if (polling && (await runTowerActivity())) markDone("act-tower");
+      if (polling && isChecked("act-train")) resumeTrainLater("da torre");
+    }
+  } else if (id === "act-guildboss" && on) {
+    if (!(await waitInWorld())) return;
+    if (!(await window.sro.guildBossOpen().catch(() => false))) {
+      log("Guild Boss fechado agora: o bot entra sozinho quando abrir (20:00 do servidor).");
+      setGbStatus("aguardando abertura", "bg-ink-600 text-muted");
+    } else {
+      if (trainRunning) await stopTrainLoop();
+      if (polling && (await runGuildBossActivity())) markDone("act-guildboss");
+      if (polling && isChecked("act-train")) resumeTrainLater("do Guild Boss");
     }
   } else if (id === "act-cont" && on) {
     if (await waitInWorld()) {
@@ -2100,6 +2234,7 @@ async function measureExp(label: string, fn: () => Promise<boolean>): Promise<bo
 
 const runFirmActivity = (): Promise<boolean> => measureExp("Firm", runFirmActivityInner);
 const runGuildActivity = (): Promise<boolean> => measureExp("Guild utilities", runGuildActivityInner);
+const runGuildBossActivity = (): Promise<boolean> => measureExp("Guild Boss", runGuildBossActivityInner);
 const runCardAlbumActivity = (): Promise<boolean> => measureExp("Album de Cards", runCardAlbumActivityInner);
 const runTowerActivity = (): Promise<boolean> => measureExp("Demon Locking Tower", runTowerActivityInner);
 const runContinentalActivity = (): Promise<boolean> => measureExp("Continental Exploration", runContinentalActivityInner);
@@ -2720,11 +2855,17 @@ function wire(): void {
   wireActivityFlag("act-cont", "act-cont");
   wireActivityFlag("act-firm", "act-firm");
   wireActivityFlag("act-guild", "act-guild");
+  wireActivityFlag("act-guildboss", "act-guildboss");
   wireActivityFlag("act-actchest", "act-actchest");
   wireActivityFlag("act-freebies", "act-freebies");
   wireActivityFlag("fb-donate", "fb-donate");
   wireActivityFlag("act-qigong", "act-qigong");
   wireActivityFlag("act-cards", "act-cards");
+  loadGuildBossConfig();
+  $("btn-gb-save")?.addEventListener("click", () => {
+    saveGuildBossConfig();
+    log("config do Guild Boss salva.");
+  });
   applyQigongUi(loadQigongConfig());
   $("btn-qg-save").addEventListener("click", () => {
     saveQigongConfig();
@@ -2754,7 +2895,7 @@ function wire(): void {
   showContNext();
   $("act-cont").addEventListener("change", showContNext);
   window.setInterval(showContNext, 60 * 1000);
-  window.setInterval(() => void maybeRunDailies().then(() => maybeRunContinental()).then(() => maybeRunChests()).then(() => maybeRunActChests()).then(() => maybeRunFreebies()).then(() => maybeRunCardAlbum()).then(() => maybeRequestQigong()), 60 * 1000);
+  window.setInterval(() => void maybeRunDailies().then(() => maybeRunContinental()).then(() => maybeRunChests()).then(() => maybeRunActChests()).then(() => maybeRunFreebies()).then(() => maybeRunCardAlbum()).then(() => maybeRunGuildBoss()).then(() => maybeRequestQigong()), 60 * 1000);
   // Mochila: confere a cada 2 min com o bot rodando e o char em mundo.
   window.setInterval(() => {
     if (polling && !watchdogBusy && !loggingIn && outOfWorldSince === 0) void checkBag().catch(() => undefined);

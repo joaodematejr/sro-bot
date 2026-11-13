@@ -53,8 +53,11 @@ import { type EngineQuery, SAME_ACTION_COOLDOWN_MS } from "./tower";
 import { LEAVE_DEFEND_HP_PCT, LEAVE_MIN_HP_PCT } from "./train";
 import type { CardAlbumSnapshot, CardGroupState } from "./cardalbum";
 
+export type BuildFocus = "all" | "int" | "str";
+
 export interface ContinentalConfig {
   mapId: number; // 0 = auto nivel; -1 = auto cards; 1..7 = mapa fixo
+  buildFocus?: BuildFocus; // all = equilibrado; int = priorizar magia/INT; str = priorizar fisico/STR
   ignoreGreen: boolean; // CHK_GREEN
   ignoreBlue: boolean; // CHK_BLUE
   restartWhenStuck: boolean; // CHK_RESTART: "Stuck in the activity for too long => Quit the game"
@@ -111,6 +114,7 @@ export function rankContinentalMapsByAlbum(
   groups: readonly CardGroupState[],
   ownedCounts: ReadonlyMap<number, number> | undefined,
   playerLevel: number,
+  buildFocus: BuildFocus = "all",
 ): ContinentalMapScore[] {
   const open = CONTINENTAL_MAPS.filter((m) => playerLevel >= m.level);
   if (!open.length) return [];
@@ -194,6 +198,15 @@ export function rankContinentalMapsByAlbum(
       if (reqBreak && playerLevel < reqBreak) score *= 0.5;
     }
 
+    // Modificador de afinidade de build:
+    // No Silkroad, grupos impares (1 Beginning, 3 Master, 5 Convergence) tem forte presenca
+    // de atributos elementais/magicos; pares (2 Discover, 4 Hell, 6 Revelation) enfatizam fisico/STR.
+    if (buildFocus === "int") {
+      if (map.id % 2 === 1) score *= 1.35;
+    } else if (buildFocus === "str") {
+      if (map.id % 2 === 0) score *= 1.35;
+    }
+
     scores.push({
       mapId: map.id,
       name: map.name,
@@ -210,7 +223,7 @@ export function rankContinentalMapsByAlbum(
 
 // Mapa da sessao: o fixo da config, o automatico por cards ou por nivel.
 export function continentalMapFor(
-  cfg: Pick<ContinentalConfig, "mapId" | "albumSnapshot">,
+  cfg: Pick<ContinentalConfig, "mapId" | "albumSnapshot" | "buildFocus">,
   level: number,
 ): number {
   if (cfg.mapId === CONTINENTAL_AUTO_CARDS && cfg.albumSnapshot?.tablesLoaded) {
@@ -218,6 +231,7 @@ export function continentalMapFor(
       cfg.albumSnapshot.groups,
       cfg.albumSnapshot.ownedCounts,
       level,
+      cfg.buildFocus ?? "all",
     );
     if (ranked.length && ranked[0].score > 0) {
       return ranked[0].mapId;
@@ -534,9 +548,12 @@ function boxStep(s: ContinentalSnapshot, cfg: ContinentalConfig): ContinentalSte
   if (ready) return act("take", `pegar o bau ${boxColor(ready)} (espaco ${ready.slot})`, boxState(ready.slot, BOX_TAKE));
   const locked = s.slots.filter((b) => b.state === BOX_LOCKED);
   if (occupied(s).length >= SLOT_COUNT && !cfg.onlyOpenChests) {
-    const drop = locked.filter((b) => isIgnored(cfg, b)).sort((a, b) => a.tier - b.tier || a.slot - b.slot)[0];
+    let drop = locked.filter((b) => isIgnored(cfg, b)).sort((a, b) => a.tier - b.tier || a.slot - b.slot)[0];
+    if (!drop && s.ahead?.some((c) => !c.used && c.type === GRID_BOX && c.tier >= TIER_ORANGE)) {
+      drop = locked.filter((b) => b.tier === TIER_PURPLE).sort((a, b) => a.slot - b.slot)[0];
+    }
     if (drop)
-      return act("discard", `descartar o bau ${boxColor(drop)} (espaco ${drop.slot}, cor ignorada, espacos cheios)`,
+      return act("discard", `descartar o bau ${boxColor(drop)} (espaco ${drop.slot}, ${drop.tier === TIER_PURPLE ? "abrir vaga para bau dourado a frente" : "cor ignorada"}, espacos cheios)`,
         boxState(drop.slot, BOX_DELETE));
   }
   if (s.slots.some((b) => b.state === BOX_UNLOCKING)) return null;
@@ -553,6 +570,17 @@ export function occupied(s: ContinentalSnapshot): BoxSlot[] {
 export function allPurpleOrBetter(s: ContinentalSnapshot): boolean {
   const boxes = occupied(s);
   return boxes.length >= SLOT_COUNT && boxes.every((b) => b.tier >= TIER_PURPLE);
+}
+
+// Verifica se nas casas a frente (1..6) ha chance de pegar bau roxo ou dourado (laranja)
+export function hasRareChestAhead(s: ContinentalSnapshot): boolean {
+  if (!s.ahead || !s.ahead.length) return false;
+  const boxes = occupied(s);
+  const allOrange = boxes.length >= SLOT_COUNT && boxes.every((b) => b.tier >= TIER_ORANGE);
+  if (allOrange) {
+    return s.ahead.some((c) => !c.used && c.type === GRID_BOX && c.tier >= TIER_ORANGE);
+  }
+  return s.ahead.some((c) => !c.used && c.type === GRID_BOX && c.tier >= TIER_PURPLE);
 }
 
 function finish(reason: string): ContinentalStep {
@@ -611,8 +639,8 @@ export function nextContinentalStep(
   const box = boxStep(s, cfg);
   if (box) return box;
   if (cfg.onlyOpenChests) return act("close", "fechar (so abrir baus)", `calls ${DLG} SetVisible 2 0 1`, 3000);
-  if (cfg.stopWhenAllPurple && allPurpleOrBetter(s))
-    return act("close", "fechar (3 baus roxos ou melhores)", `calls ${DLG} SetVisible 2 0 1`, 3000);
+  if (cfg.stopWhenAllPurple && allPurpleOrBetter(s) && !hasRareChestAhead(s))
+    return act("close", "fechar (3 baus roxos ou melhores e sem bau raro a frente)", `calls ${DLG} SetVisible 2 0 1`, 3000);
   if (s.dice > 0) {
     if (p.sinceShowMs < AIM_SETTLE_MS) return { kind: "wait", reason: "esperando o tabuleiro assentar pra mirar" };
     const aim = chooseAim(s.ahead, cfg, occupied(s).length >= SLOT_COUNT);
@@ -647,7 +675,7 @@ export function cellValue(c: AheadCell, cfg: ContinentalConfig, slotsFull: boole
     const base = [1, 2, 3, 4][c.tier] ?? 1;
     const ignored = (cfg.ignoreGreen && c.tier === TIER_GREEN) || (cfg.ignoreBlue && c.tier === TIER_BLUE);
     const v = ignored ? 0.3 : base;
-    return slotsFull ? v / 2 : v;
+    return slotsFull && c.tier < TIER_ORANGE ? v / 2 : v;
   }
   return 0;
 }

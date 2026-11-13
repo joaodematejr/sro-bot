@@ -36,6 +36,8 @@ import type { FirmConfig } from "../controller/firm";
 import { runFirm, stopFirm } from "./firm";
 import type { GuildConfig } from "../controller/guild";
 import { runGuild, stopGuild } from "./guild";
+import type { GuildBossConfig } from "../controller/guildboss";
+import { isGuildBossOpen, runGuildBoss, stopGuildBoss } from "./guildboss";
 import type { CardAlbumConfig } from "../controller/cardalbum";
 import { getLastAlbumSnapshot, previewCardAlbum, runCardAlbum, setCardAlbumDir, stopCardAlbum } from "./cardalbum";
 import { runActChests } from "./actchest";
@@ -418,6 +420,18 @@ ipcMain.handle("engine:continental", async (_e, cfg: ContinentalConfig) => {
   const snap = getLastAlbumSnapshot();
   const fullCfg: ContinentalConfig = snap ? { ...cfg, albumSnapshot: snap } : cfg;
   return runContinental("127.0.0.1", HOST_PORT, fullCfg, push);
+});
+
+// Guild Boss: entrada, saida de party, buffs por gold e safe zone.
+ipcMain.handle("engine:guildboss", async (_e, cfg: GuildBossConfig) => {
+  const push = (m: string) => win?.webContents.send("sro:log", "[guildboss] " + m);
+  return runGuildBoss("127.0.0.1", HOST_PORT, cfg, push);
+});
+
+ipcMain.handle("engine:guildbossopen", async () => isGuildBossOpen("127.0.0.1", HOST_PORT));
+
+ipcMain.handle("engine:guildbossstop", async () => {
+  stopGuildBoss();
 });
 
 ipcMain.handle("engine:continentalstop", async () => {
