@@ -4,6 +4,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** o **Mapa** mostra o **caminho que o char esta andando**: uma linha azul do char ate o destino, so com o trecho que falta, e "andando: faltam N m" no topo. Vale pra viagem do Treino ate o ponto, missao e clique no mapa do jogo; parado, nao aparece. O caminho vem no mesmo ENTS do mapa (precisa do engine novo).
 - **App:** aba **Chat** com o chat do jogo no painel: Mundo, Guilda, Party e Privado (quem mandou pra quem), com hora no seu fuso e nome de quem escreveu (o seu em dourado). Le com a aba aberta e o jogo conectado; a primeira abertura de um canal traz as ultimas 30 mensagens (uns 7 s) e depois so as novas, a cada 3 s. Da pra **responder** pela caixa embaixo (Enter ou Enviar): a mensagem sai pelo mesmo metodo do botao Enviar do jogo, com o filtro de palavras dele. No privado vai pra conversa escolhida (clique numa mensagem; sem escolha, a mais recente). O app respeita as regras do canal (Mundo pede Lv.10 e 20 s entre mensagens; ate 200 caracteres) e so manda quando voce clica.
 - **Engine:** comando `CHAT` pra mandar mensagem no chat (canal, destino e texto em UTF-8). E o texto lido do jogo sai inteiro em UTF-8 (antes letra fora do ASCII vinha como "?"): nomes e mensagens em tailandes, arabe, com acento ou simbolo aparecem certos. Vale depois de abrir o jogo de novo pelo app (o engine novo entra na injecao).
 

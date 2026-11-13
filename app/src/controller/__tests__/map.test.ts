@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { test } from "node:test";
 
-import { classifyEntity, ENTITY, parseEnts, worldToScreen } from "../map";
+import { classifyEntity, ENTITY, parseEnts, pathAhead, worldToScreen } from "../map";
 
 test("mapa: classifica monstro, elite, chefe, party, jogador, pet e NPC", () => {
   const team = new Set([111]);
@@ -60,4 +60,19 @@ test("mapa: o char fica no centro e o norte (z maior) pra cima", () => {
   assert.deepEqual(worldToScreen(100, 200, me, 400, 300, 5), [400, 300]);
   assert.deepEqual(worldToScreen(110, 200, me, 400, 300, 5), [450, 300]); // leste: direita
   assert.deepEqual(worldToScreen(100, 210, me, 400, 300, 5), [400, 250]); // norte: cima
+});
+
+test("caminho: o ENTS traz os pontos e o mapa mostra so o que falta andar", () => {
+  const r = { ok: true, me: { x: 5, z: 1, id: 1, target: 0 }, ents: [], drops: [], path: [[0, 0], [10, 0], [10, 20], "lixo"] };
+  const s = parseEnts(r, new Set());
+  assert.deepEqual(s?.path, [{ x: 0, z: 0 }, { x: 10, z: 0 }, { x: 10, z: 20 }]);
+  // no meio do primeiro trecho: faltam o canto e o destino (5 + 20 m)
+  const a = pathAhead({ x: 5, z: 1 }, s?.path ?? []);
+  assert.deepEqual(a.pts, [{ x: 10, z: 0 }, { x: 10, z: 20 }]);
+  assert.equal(Math.round(a.meters), 25);
+  // ja no segundo trecho: so o destino
+  assert.deepEqual(pathAhead({ x: 10, z: 12 }, s?.path ?? []).pts, [{ x: 10, z: 20 }]);
+  // parado ou engine sem caminho: nada
+  assert.deepEqual(pathAhead({ x: 0, z: 0 }, []).pts, []);
+  assert.deepEqual(parseEnts({ ok: true, me: { x: 0, z: 0 }, ents: [] }, new Set())?.path, []);
 });

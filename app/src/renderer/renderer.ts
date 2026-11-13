@@ -12,6 +12,7 @@ import { EXP_KEEP_MS, expDropText, type ExpPoint as RatePoint, type ExpWatch, ex
 import { alertFromLog, type TelegramAlert } from "../controller/telegram";
 import { uniqueStep, uniqueText } from "../controller/unique";
 import { CHAT_CHANNELS, type ChatMessage, mergeChat } from "../controller/chat";
+import { pathAhead } from "../controller/map";
 import { clearsNotice, nextNotice, noticeFromLog, type StopNotice } from "../controller/stopnotice";
 
 interface TgSettings {
@@ -2822,6 +2823,7 @@ interface MapView {
   target: number;
   ents: { kind: MapKind; id: number; x: number; z: number; level: number; dead: boolean; hp: number; maxHp: number; name: string }[];
   drops: { x: number; z: number; item: number; count: number }[];
+  path?: { x: number; z: number }[];
   source: "ents" | "getp";
   scene: number;
   sceneName: string;
@@ -2911,6 +2913,22 @@ function drawMap(v: MapView | null): void {
   for (const d of v.drops) {
     g.beginPath();
     g.arc(sx(d.x), sy(d.z), 2.5, 0, Math.PI * 2);
+    g.fill();
+  }
+  // Caminho que o char esta andando (so o que falta), com o destino marcado.
+  const route = pathAhead(v.me, v.path ?? []);
+  if (route.pts.length) {
+    g.strokeStyle = "rgba(56,189,248,0.85)";
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(cx, cy);
+    for (const p of route.pts) g.lineTo(sx(p.x), sy(p.z));
+    g.stroke();
+    g.lineWidth = 1;
+    const end = route.pts[route.pts.length - 1];
+    g.fillStyle = "#38bdf8";
+    g.beginPath();
+    g.arc(sx(end.x), sy(end.z), 4, 0, Math.PI * 2);
     g.fill();
   }
   // Linha ate o alvo.
@@ -3011,6 +3029,7 @@ function drawMap(v: MapView | null): void {
   const party = alive.filter((e) => e.kind === "party").length;
   $("map-title").textContent = `${v.sceneName || `cena ${v.scene}`}${v.channel ? ` · canal ${v.channel}` : ""}`;
   $("map-info").textContent = `${mobs} monstro(s) · ${players} jogador(es) · ${party} da party`
+    + (route.pts.length ? ` · andando: faltam ${Math.round(route.meters)} m` : "")
     + (tgt ? ` · alvo: ${tgt.name || "monstro"}${tgt.level ? ` Lv${tgt.level}` : ""}` : "")
     + (v.source === "getp" ? " · leitura lenta (engine sem ENTS: sem HP nem itens no chão)" : "");
 }

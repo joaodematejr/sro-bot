@@ -2167,6 +2167,38 @@ std::string read_entities_json(float radius) {
             nd++;
         }
     }
+    // path = [x, z] dos pontos do caminho que o char esta andando no mapa atual
+    // (XNavigationComponent._realPath, calculado no Navigate; o primeiro e onde
+    // ele estava ao comecar). Vazio sem navegacao (_bNav falso ou caminho nulo).
+    j += "],\"path\":[";
+    static size_t off_nav = 0, off_bnav = 0, off_real = 0;
+    if (!off_nav) {
+        void* f = find_field_in_chain(safe_class_of(player), "_nav");
+        if (f) off_nav = g_api.field_get_offset(f);
+    }
+    void* nav = nullptr;
+    if (off_nav && safe_read(&nav, (char*)player + off_nav, sizeof(nav)) && plausible_obj(nav)) {
+        if (!off_bnav) {
+            void* c = safe_class_of(nav);
+            void* f1 = find_field_in_chain(c, "_bNav");
+            void* f2 = find_field_in_chain(c, "_realPath");
+            if (f1 && f2) { off_bnav = g_api.field_get_offset(f1); off_real = g_api.field_get_offset(f2); }
+        }
+        uint8_t on = 0;
+        void* arr = nullptr;
+        size_t len = 0;
+        if (off_bnav && safe_read(&on, (char*)nav + off_bnav, 1) && on &&
+            safe_read(&arr, (char*)nav + off_real, sizeof(arr)) && plausible_obj(arr) &&
+            safe_read(&len, (char*)arr + 0x18, sizeof(len))) {
+            // Vector3[]: max_length em +0x18, elementos de 12 bytes a partir de +0x20.
+            for (size_t i = 0; i < len && i < 64; i++) {
+                float p[3] = {0, 0, 0};
+                if (!safe_read(p, (char*)arr + 0x20 + i * 12, sizeof(p))) break;
+                std::snprintf(buf, sizeof(buf), "%s[%.1f,%.1f]", i ? "," : "", p[0], p[2]);
+                j += buf;
+            }
+        }
+    }
     j += "]}";
     return j;
 }

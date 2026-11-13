@@ -51,11 +51,17 @@ export interface MapDrop {
   count: number;
 }
 
+export interface MapPoint {
+  x: number;
+  z: number;
+}
+
 export interface MapSnapshot {
   me: { x: number; z: number; id: number };
   target: number; // id do alvo do auto-play (0 = sem alvo)
   ents: MapEntity[];
   drops: MapDrop[];
+  path: MapPoint[]; // caminho que o char esta andando (vazio parado; so com o ENTS)
   source: "ents" | "getp";
 }
 
@@ -95,7 +101,33 @@ export function parseEnts(r: Record<string, unknown>, team: Set<number>): MapSna
   for (const d of Array.isArray(r.drops) ? (r.drops as unknown[]) : []) {
     if (Array.isArray(d) && d.length >= 4) drops.push({ x: d[0] as number, z: d[1] as number, item: d[2] as number, count: d[3] as number });
   }
-  return { me: { x: me.x ?? 0, z: me.z ?? 0, id: me.id ?? 0 }, target: me.target ?? 0, ents, drops, source: "ents" };
+  const path: MapPoint[] = [];
+  for (const p of Array.isArray(r.path) ? (r.path as unknown[]) : []) {
+    if (Array.isArray(p) && typeof p[0] === "number" && typeof p[1] === "number") path.push({ x: p[0], z: p[1] });
+  }
+  return { me: { x: me.x ?? 0, z: me.z ?? 0, id: me.id ?? 0 }, target: me.target ?? 0, ents, drops, path, source: "ents" };
+}
+
+// O que falta andar: o jogo guarda o caminho inteiro (o primeiro ponto e onde o
+// char comecou). Acha o trecho mais perto do char e devolve os pontos depois dele,
+// com o total em metros.
+export function pathAhead(me: MapPoint, pts: MapPoint[]): { pts: MapPoint[]; meters: number } {
+  if (pts.length < 2) return { pts: [], meters: 0 };
+  let best = 0;
+  let bestD = Infinity;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const len2 = dx * dx + dz * dz;
+    const k = len2 ? Math.max(0, Math.min(1, ((me.x - a.x) * dx + (me.z - a.z) * dz) / len2)) : 0;
+    const d = Math.hypot(a.x + k * dx - me.x, a.z + k * dz - me.z);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  const ahead = pts.slice(best + 1);
+  let meters = 0;
+  let prev = me;
+  for (const p of ahead) { meters += Math.hypot(p.x - prev.x, p.z - prev.z); prev = p; }
+  return { pts: ahead, meters };
 }
 
 // Coordenada do jogo (x, z) na tela, com o char no centro e o norte (z maior) pra
@@ -157,5 +189,5 @@ export async function readMapGetp(q: EngineQuery, team: Set<number>, max = 80): 
     const name = kind === "monster" ? "" : String((await q("GETP", `${b} get_Name`)).str ?? "");
     ents.push({ kind, id, x: bitsToFloat(ex), z: bitsToFloat(ez), level, dead, hp: 0, maxHp: 0, name });
   }
-  return { me, target, ents, drops: [], source: "getp" };
+  return { me, target, ents, drops: [], path: [], source: "getp" };
 }
