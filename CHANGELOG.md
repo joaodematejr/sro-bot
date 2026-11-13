@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.148.0] - 2026-11-13
+
 - **App:** o **Mapa** mostra **paredes e areas bloqueadas**: o navmesh da cena (o mesmo que o jogo usa pra achar caminho) pinta a area andavel um pouco mais clara, o resto fica escuro e a borda vira parede. Lido uma vez por mapa e guardado na pasta de dados (`navmesh/<cena>.txt`); nas proximas vezes abre na hora.
 - **Engine:** comando `NAVM` (`start` pede `NavMesh.CalculateTriangulation` na thread principal; `get <pos>` devolve o resultado em pedacos de 60 mil caracteres).
 - **App:** status do char: a aba Status mostra os **buffs ativos** com nome, nivel, pilha e tempo restante (descendo a cada segundo; lidos a cada 10 s), e a aba Estatisticas ganha **Abates** e **Abates / hora** da sessao.
