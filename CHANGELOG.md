@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.147.0] - 2026-11-12
+
 - **App:** Continental com a regiao **Automatico por cards**: escolhe o mapa cujos cards mais faltam no Album de Cards pra fechar combinacoes e subir estrela (grupo no maximo nao gasta dado; sem leitura do album, cai no automatico por nivel). A leitura do album fica guardada pra rodada usar, e cada passada de baus pede uma nova analise do album. Depois de cada passada so de baus a rodada de dados e antecipada pra checagem seguinte, mesmo com o char cacando (no ponto valem as travas de HP de sempre: so comeca com 90% e desiste abaixo de 60%).
 
 ## [0.146.1] - 2026-11-12
