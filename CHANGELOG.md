@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** **party** no Treino (Treino > Time), tudo pelos metodos do proprio jogo e desligado por padrao. Sem time: **criar o time e ficar de lider** (no lugar de entrar num time aberto), ou **aceitar convite** de quem esta numa lista de nomes ou de amigo/guilda. Lider com vaga: **entrada automatica ligada**, **aceitar pedidos de entrada** e **convidar** uma lista de nomes (o jogo acha o nome nos amigos, na guilda ou no mesmo mapa; so quem esta livre). Membro: **seguir o lider** pelo Follow do jogo, que anda atras dele (ate de mapa) e caca em volta. Seguindo, o ponto salvo fica de lado e o Treino nao desliga a caca; se o jogo parar de seguir (lider numa dungeon, troca de lider, saida do time) a caca e religada na hora e o pedido volta em 2 min. Pausa pra outra atividade para de seguir e deixa a caca ligada no lugar; a ida pra cidade so para de seguir depois da checagem de combate, HP e monstro perto.
+
 ## [0.149.0] - 2026-11-13
 
 - **App:** atividade **Guild Boss** (Atividades > Guild Boss, desligada por padrao), por metodo: so com o evento aberto (ou o char ja na arena) para o Treino, sai da party (ReqTeamOp 7), abre o painel do World Boss e entra pelo Challenge, religa o auto-play na arena e pega a recompensa no fim. Fechado, nao mexe em nada e confere de novo a cada minuto. A opcao de buffs por gold e a safe zone do golpe supremo ja estao no painel, mas o fluxo ainda nao compra buff nem detecta o golpe. (contribuicao de `RicardoGuedes555`)
