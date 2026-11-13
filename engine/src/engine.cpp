@@ -82,6 +82,9 @@ struct Action {
     // (Transform.Find, GetComponent) pode rodar.
     char xm_path[192];
     char xm_opath[8][160];
+    // method 15 (say): texto do chat em UTF-8 (a1 = canal) e o destino do privado.
+    char say[1024];
+    uint64_t say_to;
 };
 std::mutex g_queue_mu;
 std::vector<Action> g_queue;
@@ -1305,6 +1308,37 @@ void exec_auto_main(const Action& act) {
         g_api.runtime_invoke(act.mi, act.obj, act.argc > 0 ? p : nullptr, &exc);
         LOG("exec callp %s.%s(%d nulos) obj=%p exc=%s", act.cls, act.name, act.argc, act.obj,
             exc ? "sim" : "nao");
+        return;
+    }
+
+    // method 15 = say: XChatView.SendChatContent(texto, canal, ...), o mesmo
+    // caminho do botao Enviar do chat (filtro de palavras e bloqueio do proprio
+    // jogo). No privado o destino e o ChatFriendId da tela, trocado so durante a
+    // chamada e devolvido depois.
+    if (method == 15) {
+        void* klass = find_class_by_name("XChatView");
+        void* view = klass ? resolve_singleton(klass) : nullptr;
+        if (!plausible_obj(view)) { LOGE("say: XChatView nulo"); return; }
+        const void* m = g_api.class_get_method_from_name(klass, "SendChatContent", 10);
+        if (!m || !g_api.string_new) { LOGE("say: SendChatContent nao achado"); return; }
+        uint64_t* friend_id = nullptr;
+        if (act.a1 == 3) {
+            void* fi = g_api.class_get_field_from_name(klass, "ChatFriendId");
+            if (!fi) { LOGE("say: ChatFriendId nao achado"); return; }
+            friend_id = (uint64_t*)((char*)view + g_api.field_get_offset(fi));
+        }
+        uint64_t before = friend_id ? *friend_id : 0;
+        if (friend_id) *friend_id = act.say_to;
+        int32_t ch = act.a1;
+        uint8_t yes = 1, no = 0;
+        uint32_t zero = 0;
+        // content, channelType, selfReceive, param, bIsSystem, audioUrl,
+        // audioFileName, audiotime, isRecruit, isDragonGuildRecruit
+        void* p[10] = {g_api.string_new(act.say), &ch, &yes, nullptr, &no, nullptr, nullptr, &zero, &no, &no};
+        void* exc = nullptr;
+        g_api.runtime_invoke(m, view, p, &exc);
+        if (friend_id) *friend_id = before;
+        LOG("exec say canal=%d exc=%s", ch, exc ? "sim" : "nao");
         return;
     }
 
@@ -2587,6 +2621,35 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
         // vao em texto pra thread principal (method 14), que resolve e invoca. A
         // resposta so confirma a fila: erro de caminho sai no logcat (SROENGINE),
         // e quem chama confere o efeito no estado do jogo.
+        // say <canal> <roleid> <hex>: manda uma mensagem no chat (method 15). Canal
+        // 1 Mundo, 2 Guilda, 7 Party, 3 Privado (roleid = destino; 0 nos outros).
+        // Texto em UTF-8 escrito em hex (pode ter espaco e acento), ate 1000 bytes.
+        // A resposta so confirma a fila: quem chama confere a mensagem no chat.
+        if (body.rfind("say ", 0) == 0) {
+            std::vector<std::string> w = split_words(body.substr(4));
+            if (w.size() != 3) return "{\"ok\":false,\"erro\":\"uso: say canal roleid hex\"}";
+            int ch = std::atoi(w[0].c_str());
+            if (ch != 1 && ch != 2 && ch != 3 && ch != 7) return "{\"ok\":false,\"erro\":\"canal: 1 2 3 7\"}";
+            uint64_t to = std::strtoull(w[1].c_str(), nullptr, 10);
+            if (ch == 3 && to == 0) return "{\"ok\":false,\"erro\":\"privado sem destino\"}";
+            const std::string& hx = w[2];
+            Action act{};
+            if (hx.empty() || hx.size() % 2 || hx.size() / 2 >= sizeof(act.say))
+                return "{\"ok\":false,\"erro\":\"texto vazio ou longo demais\"}";
+            for (size_t i = 0; i < hx.size(); i += 2) {
+                unsigned v = 0;
+                if (std::sscanf(hx.c_str() + i, "%2x", &v) != 1 || v == 0)
+                    return "{\"ok\":false,\"erro\":\"hex invalido\"}";
+                act.say[i / 2] = (char)v;
+            }
+            act.type = 2; act.method = 15; act.a1 = ch; act.say_to = to;
+            {
+                std::lock_guard<std::mutex> lk(g_queue_mu);
+                g_queue.push_back(act);
+                g_has_actions = true;
+            }
+            return "{\"ok\":true,\"say\":true}";
+        }
         if (body.rfind("callxm ", 0) == 0) {
             std::vector<std::string> all = split_words(body.substr(7));
             auto sep = std::find(all.begin(), all.end(), std::string("--"));
