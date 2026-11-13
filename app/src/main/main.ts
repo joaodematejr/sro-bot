@@ -27,7 +27,7 @@ import {
 import { type GameState, reconnectPlan } from "../controller/libstate";
 import { type AppSettings, consolePath, normalizeSettings, resolveAdb, serialFor } from "../controller/settings";
 import { adbBin, setAdbBin, setEmulator } from "./adbbin";
-import { chatChannelId, parseTzOffset, readChatChannel } from "../controller/chat";
+import { chatChannelId, chatSendCheck, parseTzOffset, readChatChannel, sayBody } from "../controller/chat";
 import { runDemonTower, stopDemonTower } from "./tower";
 import { hpPercent, readChannel, readEnemiesAround, readTrainSnapshot, safeToStopHunt, type TrainConfig } from "../controller/train";
 import type { FirmConfig } from "../controller/firm";
@@ -216,6 +216,23 @@ ipcMain.handle("engine:chat", async (_e, key: string, sinceId: number) => {
   }
   const q = (tag: string, body: string) => sendCommand("127.0.0.1", HOST_PORT, tag, body);
   return readChatChannel(q, ch, sinceId, chatTz ?? 0);
+});
+
+// Responder no chat: so pelo botao do painel. Confere texto, nivel, intervalo do
+// canal e destino antes; manda pela tag CHAT (o engine chama o SendChatContent do
+// jogo). Engine antigo sem CHAT devolve so o jogador: vira erro, sem efeito.
+const chatSentAt = new Map<string, number>();
+ipcMain.handle("engine:chatsend", async (_e, key: string, text: string, to?: string) => {
+  const ch = chatChannelId(key);
+  const p = await queryPlayer("127.0.0.1", HOST_PORT).catch(() => null);
+  if (ch === undefined || !p || p.ok !== true) return { ok: false, erro: "jogo nao conectado" };
+  const level = (p as { level?: unknown }).level;
+  const c = chatSendCheck(key, String(text ?? ""), { level: typeof level === "number" ? level : undefined, lastSentAt: chatSentAt.get(key), now: Date.now(), to });
+  if (!c.ok) return { ok: false, erro: c.erro };
+  const r = await sendCommand("127.0.0.1", HOST_PORT, "CHAT", sayBody(ch, to ?? "", c.text));
+  if (r.ok !== true) return { ok: false, erro: typeof r.erro === "string" ? r.erro : "engine sem o comando de chat (abra o jogo de novo pelo app)" };
+  chatSentAt.set(key, Date.now());
+  return { ok: true };
 });
 
 // Mochila: espacos livres e ocupados (so leitura; pro aviso de mochila cheia).

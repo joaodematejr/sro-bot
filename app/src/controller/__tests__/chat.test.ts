@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { test } from "node:test";
 
-import { chatChannelId, chatTimeMs, cleanChatText, type ChatMessage, mergeChat, parseTzOffset, readChatChannel } from "../chat";
+import { chatChannelId, chatSendCheck, chatTimeMs, cleanChatText, type ChatMessage, mergeChat, parseTzOffset, readChatChannel, roleId, sayBody } from "../chat";
 
 test("texto do chat sai sem as marcas de cor e estilo do jogo", () => {
   assert.equal(cleanChatText("Receive [55A9FF]Gold[-]*300"), "Receive Gold*300");
@@ -20,7 +20,7 @@ test("hora da mensagem: DateTime local do aparelho em epoch, descontando o fuso"
 });
 
 // Canal falso: lista de mensagens por indice, como o GetChatInfoList.
-function fakeChat(list: { id: number; from: string; to?: string; text: string; self?: boolean }[] | null) {
+function fakeChat(list: { id: number; from: string; to?: string; text: string; self?: boolean; sid?: number; rid?: number }[] | null) {
   const asked: string[] = [];
   const q = async (_tag: string, body: string): Promise<Record<string, unknown>> => {
     asked.push(body);
@@ -35,6 +35,9 @@ function fakeChat(list: { id: number; from: string; to?: string; text: string; s
       case "mSenderName": return { ok: true, str: it.from };
       case "mReceiverName": return { ok: true, str: it.to ?? "" };
       case "mContent": return { ok: true, str: it.text };
+      case "mSenderId": return { ok: true, int: it.sid ?? 0 };
+      case "mReceiverId": return { ok: true, int: it.rid ?? 0 };
+      case "mSenderId+4": case "mReceiverId+4": return { ok: true, int: 1 };
       default: return { ok: true, int: 0 };
     }
   };
@@ -59,12 +62,20 @@ test("primeira leitura para no limite; privado traz o destinatario", async () =>
   assert.equal(r?.[4].self, true);
 });
 
+test("privado: o outro lado da conversa e quem mandou, ou o destino quando fui eu", async () => {
+  const list = [{ id: 1, from: "Amigo", to: "MeuChar", text: "oi", sid: 5, rid: 9 }, { id: 2, from: "MeuChar", to: "Amigo", text: "oi", self: true, sid: 9, rid: 5 }];
+  const { q } = fakeChat(list);
+  const r = await readChatChannel(q, 3, -1, 0);
+  assert.deepEqual(r?.map((m) => [m.peer, m.peerId]), [["Amigo", "4294967301"], ["Amigo", "4294967301"]]);
+  assert.equal(roleId(-1, 0), "4294967295"); // metade de baixo negativa no GETP
+});
+
 test("jogo reaberto: ids recomecam e a leitura volta do zero", async () => {
   const list = [1, 2, 3].map((id) => ({ id, from: "a", text: "x" }));
   const { q } = fakeChat(list);
   const r = await readChatChannel(q, 1, 500, 0);
   assert.deepEqual(r?.map((m) => m.id), [1, 2, 3]);
-  const m = (id: number): ChatMessage => ({ id, from: "", to: "", text: "", self: false, at: 0 });
+  const m = (id: number): ChatMessage => ({ id, from: "", to: "", text: "", self: false, at: 0, peerId: "", peer: "" });
   assert.deepEqual(mergeChat([m(499), m(500)], r ?? []).map((x) => x.id), [1, 2, 3]);
 });
 
@@ -73,8 +84,28 @@ test("canal que nunca recebeu mensagem volta vazio", async () => {
   assert.deepEqual(await readChatChannel(q, 7, -1, 0), []);
 });
 
+test("antes de mandar: texto, tamanho, nivel, intervalo do canal e destino do privado", () => {
+  const now = 100000;
+  assert.equal(chatSendCheck("mundo", "  oi\n todos ", { now, level: 87 }).text, "oi todos");
+  assert.equal(chatSendCheck("mundo", "oi", { now, level: 87 }).ok, true);
+  assert.equal(chatSendCheck("mundo", "   ", { now }).ok, false);
+  assert.equal(chatSendCheck("mundo", "x".repeat(201), { now }).ok, false);
+  assert.equal(chatSendCheck("mundo", "oi", { now, level: 9 }).erro, "o Mundo pede Lv.10");
+  assert.match(chatSendCheck("mundo", "oi", { now, lastSentAt: now - 5000 }).erro ?? "", /espere 15 s/);
+  assert.equal(chatSendCheck("mundo", "oi", { now, lastSentAt: now - 20000 }).ok, true);
+  assert.equal(chatSendCheck("guilda", "oi", { now, lastSentAt: now - 1000 }).ok, true);
+  assert.equal(chatSendCheck("privado", "oi", { now }).ok, false);
+  assert.equal(chatSendCheck("privado", "oi", { now, to: "4294967301" }).ok, true);
+  assert.equal(chatSendCheck("loja", "oi", { now }).ok, false);
+});
+
+test("corpo do say: canal, destino so no privado e texto UTF-8 em hex", () => {
+  assert.equal(sayBody(1, "123", "oi a"), "say 1 0 6f692061");
+  assert.equal(sayBody(3, "123", "ç"), "say 3 123 c3a7");
+});
+
 test("juntar nao repete mensagem e guarda so as ultimas", () => {
-  const m = (id: number): ChatMessage => ({ id, from: "", to: "", text: "", self: false, at: 0 });
+  const m = (id: number): ChatMessage => ({ id, from: "", to: "", text: "", self: false, at: 0, peerId: "", peer: "" });
   assert.deepEqual(mergeChat([m(1), m(2)], [m(2), m(3)]).map((x) => x.id), [1, 2, 3]);
   assert.deepEqual(mergeChat([m(1), m(2)], [m(3), m(4)], 3).map((x) => x.id), [2, 3, 4]);
 });

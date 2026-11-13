@@ -104,9 +104,15 @@
                   <div id="chat-channels" class="flex gap-1"></div>
                   <span id="chat-live" class="pill bg-ink-600 text-muted">parado</span>
                   <div class="flex-1"></div>
-                  <span class="text-xs text-muted">Só leitura: para responder, use o jogo.</span>
+                  <span class="text-xs text-muted">No privado, clique numa mensagem para escolher a quem responder.</span>
                 </div>
-                <div id="chat-list" class="rounded-md bg-ink-900 p-2 overflow-y-auto text-sm space-y-0.5" style="height: 560px"></div>
+                <div id="chat-list" class="rounded-md bg-ink-900 p-2 overflow-y-auto text-sm space-y-0.5" style="height: 520px"></div>
+                <div class="flex items-center gap-2 mt-2">
+                  <span id="chat-to" class="text-xs text-gold"></span>
+                  <input id="chat-input" maxlength="200" class="flex-1 min-w-0 bg-ink-600 border border-line rounded px-2 py-1 text-sm text-gray-100" placeholder="Escreva e aperte Enter" />
+                  <button id="chat-send" class="btn btn-gold">Enviar</button>
+                </div>
+                <div id="chat-send-status" class="text-xs text-muted mt-1"></div>
               </div>
             </div>
 

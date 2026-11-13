@@ -59,6 +59,7 @@ declare global {
       map: () => Promise<MapView | null>;
       ents: () => Promise<Pick<MapView, "me" | "ents"> | null>;
       chat: (key: string, sinceId: number) => Promise<ChatMessage[] | null>;
+      chatSend: (key: string, text: string, to?: string) => Promise<{ ok: boolean; erro?: string }>;
       inject: () => Promise<{ ok: boolean; erro?: string }>;
       restore: () => Promise<{ ok: boolean; erro?: string }>;
       gameForeground: () => Promise<boolean>;
@@ -3087,14 +3088,57 @@ function setupMap(): void {
 }
 
 // ---- Chat do jogo (aba Chat) ----
-// So leitura: com a aba aberta e o jogo conectado, le as mensagens novas do canal
-// escolhido a cada 3 s. Cada canal guarda o que ja leu (ate 200). O texto entra
-// por textContent: mensagem de jogador nunca vira HTML.
+// Com a aba aberta e o jogo conectado, le as mensagens novas do canal escolhido a
+// cada 3 s. Cada canal guarda o que ja leu (ate 200). O texto entra por
+// textContent: mensagem de jogador nunca vira HTML. Responder so pelo botao (ou
+// Enter); no privado vai pra conversa escolhida (clique numa mensagem; sem
+// escolha, a mais recente).
 const CHAT_EVERY_MS = 3000;
 let chatKey: string = CHAT_CHANNELS[0].key;
 const chatMsgs = new Map<string, ChatMessage[]>();
 let chatBusy = false;
 let chatNextAt = 0;
+let chatTo: { id: string; name: string } | null = null;
+let chatSending = false;
+
+function showChatTo(): void {
+  if (chatKey === "privado" && !chatTo) {
+    const last = [...(chatMsgs.get("privado") ?? [])].reverse().find((m) => m.peerId && m.peerId !== "0");
+    if (last) chatTo = { id: last.peerId, name: last.peer };
+  }
+  $("chat-to").textContent = chatKey === "privado" ? (chatTo ? `Para ${chatTo.name || "?"}:` : "Para: escolha uma mensagem") : "";
+}
+
+async function sendChat(): Promise<void> {
+  const input = $("chat-input") as HTMLInputElement;
+  const status = $("chat-send-status");
+  if (chatSending || !input.value.trim()) return;
+  if (!gameOpen) {
+    status.textContent = "abra o jogo para mandar mensagem";
+    status.className = "text-xs text-warn mt-1";
+    return;
+  }
+  chatSending = true;
+  ($("chat-send") as HTMLButtonElement).disabled = true;
+  try {
+    const r = await window.sro.chatSend(chatKey, input.value, chatKey === "privado" ? chatTo?.id : undefined);
+    if (r.ok) {
+      input.value = "";
+      status.textContent = "enviada pelo jogo; aparece aqui em alguns segundos";
+      status.className = "text-xs text-muted mt-1";
+      chatNextAt = 0;
+    } else {
+      status.textContent = "não enviada: " + (r.erro ?? "erro");
+      status.className = "text-xs text-warn mt-1";
+    }
+  } catch {
+    status.textContent = "não enviada: sem resposta do app";
+    status.className = "text-xs text-warn mt-1";
+  } finally {
+    chatSending = false;
+    ($("chat-send") as HTMLButtonElement).disabled = false;
+  }
+}
 
 function chatVisible(): boolean {
   return !$("tab-chat").classList.contains("hidden");
@@ -3112,6 +3156,15 @@ function chatLine(m: ChatMessage): HTMLElement {
   text.className = "text-gray-200 break-words";
   text.textContent = m.text;
   row.append(at, who, text);
+  if (m.peerId && m.peerId !== "0") {
+    row.className = "cursor-pointer hover:bg-ink-700 rounded";
+    row.title = `responder a ${m.peer || "?"}`;
+    row.addEventListener("click", () => {
+      chatTo = { id: m.peerId, name: m.peer };
+      showChatTo();
+      ($("chat-input") as HTMLInputElement).focus();
+    });
+  }
   return row;
 }
 
@@ -3146,7 +3199,10 @@ async function chatTick(): Promise<void> {
     live.textContent = fresh ? "ao vivo" : "sem leitura";
     live.className = fresh ? "pill bg-ok/20 text-ok" : "pill bg-ink-600 text-muted";
     if (fresh) chatMsgs.set(key, mergeChat(prev, fresh));
-    if (key === chatKey && (fresh?.length || !prev.length)) drawChat();
+    if (key === chatKey && (fresh?.length || !prev.length)) {
+      drawChat();
+      showChatTo();
+    }
     chatNextAt = Date.now() + (fresh ? CHAT_EVERY_MS : 10000);
   } catch {
     chatNextAt = Date.now() + 10000;
@@ -3171,11 +3227,16 @@ function setupChat(): void {
       const box = $("chat-list");
       box.scrollTop = box.scrollHeight;
       drawChat();
+      showChatTo();
     });
     bar.append(b);
   }
   paint();
   drawChat();
+  $("chat-send").addEventListener("click", () => void sendChat());
+  $("chat-input").addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Enter") void sendChat();
+  });
   setInterval(() => void chatTick(), 250);
 }
 
