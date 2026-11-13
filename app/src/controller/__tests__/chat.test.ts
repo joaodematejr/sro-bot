@@ -51,11 +51,11 @@ test("le so as mensagens novas, da mais velha pra mais nova", async () => {
 });
 
 test("primeira leitura para no limite; privado traz o destinatario", async () => {
-  const list = Array.from({ length: 50 }, (_, i) => ({ id: i + 1, from: "a", to: "xJoao", text: "x", self: i === 49 }));
+  const list = Array.from({ length: 50 }, (_, i) => ({ id: i + 1, from: "a", to: "MeuChar", text: "x", self: i === 49 }));
   const { q } = fakeChat(list);
   const r = await readChatChannel(q, 3, -1, 0, 5);
   assert.deepEqual(r?.map((m) => m.id), [46, 47, 48, 49, 50]);
-  assert.equal(r?.[4].to, "xJoao");
+  assert.equal(r?.[4].to, "MeuChar");
   assert.equal(r?.[4].self, true);
 });
 
