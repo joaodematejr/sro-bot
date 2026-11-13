@@ -4,6 +4,7 @@ import { chestDelayMs, chestPassRolls, contScheduleText } from "../controller/co
 import { type AiAction, parseActions, stripActions, validateAction } from "../controller/aiactions";
 import { activityExpLine, eventFromLog, type ExpPoint } from "../controller/history";
 import { unsignedExp } from "../controller/train";
+import { parseNames } from "../controller/party";
 import { bagLevel, bagStep, bagText, type BagWatch } from "../controller/bag";
 import { dueDailies, gameDay } from "../controller/daily";
 import { luckyMoneyWindow } from "../controller/freebies";
@@ -1203,7 +1204,10 @@ interface TrainUiConfig {
   stopMinGold?: number;
   home?: TrainSpotUi;
   homeOn?: boolean;
-  team?: { join: boolean; sameMapOnly: boolean };
+  team?: {
+    join: boolean; sameMapOnly: boolean; lead?: boolean; openAutoJoin?: boolean; acceptRequests?: boolean;
+    invite?: string[]; acceptFrom?: string[]; acceptFriendsGuild?: boolean; follow?: boolean;
+  };
   booster?: boolean;
   buffDamage?: boolean;
   buffVip?: boolean;
@@ -1227,6 +1231,11 @@ function checked(id: string): boolean {
   return ($(id) as HTMLInputElement).checked;
 }
 
+// Nomes de personagem separados por virgula (convite de time).
+function nameList(id: string): string[] {
+  return parseNames(($(id) as HTMLInputElement).value);
+}
+
 function readTrainUi(): TrainUiConfig {
   const deaths = intOf("tr-deaths", 0);
   const homeOn = checked("tr-home-on");
@@ -1245,7 +1254,12 @@ function readTrainUi(): TrainUiConfig {
     stopMinGold: checked("tr-stop-gold-on") ? Math.max(0, intOf("tr-stop-gold", 100000)) : 0,
     home: homeOn ? trainHome : undefined,
     homeOn,
-    team: { join: checked("tr-team-on"), sameMapOnly: checked("tr-team-same") },
+    team: {
+      join: checked("tr-team-on"), sameMapOnly: checked("tr-team-same"), lead: checked("tr-team-lead"),
+      openAutoJoin: checked("tr-team-auto"), acceptRequests: checked("tr-team-req"),
+      invite: nameList("tr-team-invite"), acceptFrom: nameList("tr-team-accept"),
+      acceptFriendsGuild: checked("tr-team-accept-fg"), follow: checked("tr-team-follow"),
+    },
     booster: checked("tr-booster"),
     buffDamage: checked("tr-buff-dano"),
     buffVip: checked("tr-buff-vip"),
@@ -1340,6 +1354,14 @@ function applyTrainUi(c: TrainUiConfig): void {
   // de graca. Quem desligou continua desligado.
   ($("tr-team-on") as HTMLInputElement).checked = c.team?.join !== false;
   ($("tr-team-same") as HTMLInputElement).checked = !!c.team?.sameMapOnly;
+  ($("tr-team-lead") as HTMLInputElement).checked = !!c.team?.lead;
+  if (c.team?.lead) ($("tr-team-on") as HTMLInputElement).checked = false;
+  ($("tr-team-auto") as HTMLInputElement).checked = c.team?.openAutoJoin !== false;
+  ($("tr-team-req") as HTMLInputElement).checked = c.team?.acceptRequests !== false;
+  ($("tr-team-invite") as HTMLInputElement).value = (c.team?.invite ?? []).join(", ");
+  ($("tr-team-accept") as HTMLInputElement).value = (c.team?.acceptFrom ?? []).join(", ");
+  ($("tr-team-accept-fg") as HTMLInputElement).checked = !!c.team?.acceptFriendsGuild;
+  ($("tr-team-follow") as HTMLInputElement).checked = !!c.team?.follow;
   ($("tr-booster") as HTMLInputElement).checked = !!c.booster;
   ($("tr-buff-dano") as HTMLInputElement).checked = !!c.buffDamage;
   ($("tr-buff-vip") as HTMLInputElement).checked = !!c.buffVip;
@@ -2809,8 +2831,18 @@ function wire(): void {
 
   applyTrainUi(loadTrainConfig());
   for (const id of ["tr-deaths", "tr-potions", "tr-sw-few", "tr-sw-min", "tr-sw-radius", "tr-sw-deaths-on", "tr-sw-deaths",
-    "tr-stop-level-on", "tr-stop-level", "tr-stop-exp", "tr-stop-gold-on", "tr-stop-gold", "tr-home-on", "tr-team-on", "tr-team-same", "tr-sw-hp-on", "tr-sw-hp", "tr-booster", "tr-buff-dano", "tr-buff-vip", "tr-berserk", "tr-devil", "tr-skills", "tr-sell", "tr-players"])
+    "tr-stop-level-on", "tr-stop-level", "tr-stop-exp", "tr-stop-gold-on", "tr-stop-gold", "tr-home-on", "tr-team-on", "tr-team-same", "tr-team-lead", "tr-team-auto", "tr-team-req", "tr-team-invite", "tr-team-accept",
+    "tr-team-accept-fg", "tr-team-follow", "tr-sw-hp-on", "tr-sw-hp", "tr-booster", "tr-buff-dano", "tr-buff-vip", "tr-berserk", "tr-devil", "tr-skills", "tr-sell", "tr-players"])
     $(id).addEventListener("change", saveTrainConfig);
+  // Entrar num time aberto e criar um time sao um ou outro.
+  $("tr-team-on").addEventListener("change", () => {
+    if (checked("tr-team-on")) ($("tr-team-lead") as HTMLInputElement).checked = false;
+    saveTrainConfig();
+  });
+  $("tr-team-lead").addEventListener("change", () => {
+    if (checked("tr-team-lead")) ($("tr-team-on") as HTMLInputElement).checked = false;
+    saveTrainConfig();
+  });
   $("btn-tr-spot").addEventListener("click", async () => {
     const r = await window.sro.trainSpot();
     if (!r.ok || !r.spot) {
