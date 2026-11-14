@@ -538,6 +538,25 @@ carregar antes de despejar.
   (thread do socket, e na epoca o texto no meio do caminho ainda virava `0`)
   prendeu o engine ate reiniciar o jogo. Depois do premio o jogo mostra o `RewardDlg`.
 
+## Correio e premio por tempo online (2026-11-14)
+
+- Correio: `XMailDocument`. `calls XMailDocument ReqMailInfo 0` pede a pagina atual
+  (`currPage`, 7 por pagina, `pagesCnt`) e enche `mails` (MailItem: `ID` uint64 lido
+  como `ID` e `ID+4`, `State` 0 NONE / 1 CLAIMED / 2 REWARD, `IsRead`, `Title`).
+  `callx XMailDocument CtlPage 1 -- b:1` (ou `b:0`) troca de pagina.
+- Pegar o anexo: `callx XMailDocument ReqMailOP 2 -- i:2 q:<uid>` (MailOP Read 0,
+  Delete 1, Claim 2, ClaimAll 3). Ha duas `ReqMailOP` de 2 args; a de `uint64` vem
+  antes nos metadados (conferido no IL) e e a que o `class_get_method_from_name` acha.
+  Com a tela do correio fechada o `ResMailOP` sai sem atualizar a lista: pedir de novo.
+- Premio por tempo online: `XOnlineRewardDocument Status` e `LeftTime` (List<int>,
+  uma por faixa; 0 contando, 1 liberado, 2 pego), `calls XOnlineRewardDocument
+  QueryStatus 0` atualiza e `callsi XOnlineRewardDocument SendGetReward 1 <faixa> 0`
+  pega. Em 2026-11-14 eram 4 faixas, todas pegas.
+- `XNextDayRewardDocument` nao existe no char em mundo (sem singleton) e o
+  `RefreshStatus` dele e vazio: o premio do dia seguinte nao e usado neste servidor.
+- Battle Pass (`XEternalPathwayDocument`): pegar pede `List<ItemRewardKey>` de
+  gratis e pagos (`SendRequestReceiveReward`); nao feito.
+
 ## Guild Store (2026-11-11)
 
 - E a loja generica (`XNormalShopDocument`) no sistema `XSys_Mall_Guild` (324),
