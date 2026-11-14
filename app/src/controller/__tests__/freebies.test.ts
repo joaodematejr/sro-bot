@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { test } from "node:test";
 
-import { type FreebiesSnapshot, luckyMoneyWindow, nextFreebieStep, payCardDay, payCardsToClaim } from "../freebies";
+import { type FreebiesSnapshot, luckyMoneyWindow, mailClaimBody, nextFreebieStep, payCardDay, payCardsToClaim, readRewardMails } from "../freebies";
 
 // Estado real em 2026-11-10 07:2x: 202 diario 0/1 gratis, 303 semanal e 401 mensal
 // pegos, o resto pago; attendance de hoje pendente com 3 dias; caixinha liberada.
@@ -158,4 +158,42 @@ test("cartao de privilegio: so ativo e sem o premio de hoje (valores de 2026-11-
   assert.deepEqual(payCardsToClaim([silverVencido, premium], now, 8), [premium]);
   assert.deepEqual(payCardsToClaim([{ ...premium, lastFetch: 20768 }], now, 8), []);
   assert.deepEqual(payCardsToClaim([{ id: 9, expire: 1796840425, lastFetch: 0 }], now, 8), []); // id fora da tabela
+});
+
+test("gratis: premio por tempo online so da faixa liberada; anexos do correio depois, um por vez", () => {
+  const base = { packs: [], todayChecked: true, littleGift: 1 };
+  const tried = new Set<string>();
+  const order: string[] = [];
+  const s = snap({ ...base, online: [2, 1, 0, 0], mails: [{ uid: "7707795306413031639", title: "Compensation" }] });
+  for (let i = 0; i < 5; i++) {
+    const st = nextFreebieStep(s, tried, false);
+    if (st.kind !== "act") break;
+    assert.equal(st.gain, true);
+    tried.add(st.key);
+    order.push(st.body);
+  }
+  assert.deepEqual(order, [
+    "callsi XOnlineRewardDocument SendGetReward 1 1 0",
+    "callx XMailDocument ReqMailOP 2 -- i:2 q:7707795306413031639",
+  ]);
+  // Estado de 2026-11-14: 4 faixas pegas e so um correio ja resgatado.
+  const now = nextFreebieStep(snap({ ...base, online: [2, 2, 2, 2], mails: [] }), new Set(), false);
+  assert.equal(now.kind, "done");
+  assert.match(now.kind === "done" ? now.reason : "", /online 4\/4/);
+  assert.throws(() => mailClaimBody("0"));
+  assert.throws(() => mailClaimBody("12 i:3"));
+});
+
+test("correio: le so os com anexo (State 2) e monta o uid de 64 bits", async () => {
+  const M = "XMailDocument mails";
+  const v: Record<string, Record<string, unknown>> = {
+    [`${M} get_Count`]: { ok: true, int: 2 },
+    [`${M} get_Item:0 State`]: { ok: true, int: 1 },
+    [`${M} get_Item:1 State`]: { ok: true, int: 2 },
+    [`${M} get_Item:1 ID`]: { ok: true, int: 6630359 },
+    [`${M} get_Item:1 ID+4`]: { ok: true, int: 1794604549 },
+    [`${M} get_Item:1 Title`]: { ok: true, str: "Guild Help" },
+  };
+  const q = async (_tag: string, body: string) => v[body] ?? { ok: false };
+  assert.deepEqual(await readRewardMails(q), [{ uid: ((1794604549n << 32n) | 6630359n).toString(), title: "Guild Help" }]);
 });

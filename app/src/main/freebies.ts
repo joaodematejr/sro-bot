@@ -1,12 +1,14 @@
 // Gratis do dia por metodo (Event Pack, attendance, caixinha do Daily Pack, baus do
-// sign-in e red envelopes da guilda): pede a lista da aba Event, o estado do sign-in
-// e a lista de envelopes, pega um por vez com o nextFreebieStep e confere Diamond e
-// Silk depois de cada pedido. Saldo mudou: para e nao pede mais nada ate reabrir o app.
+// sign-in e red envelopes da guilda, premio por tempo online, anexos do correio): pede
+// a lista da aba Event, o estado do sign-in, a lista de envelopes e o correio, pega um
+// por vez com o nextFreebieStep e confere Diamond e Silk depois de cada pedido. Saldo
+// mudou (ou caiu, no correio e no online): para e nao pede mais nada ate reabrir o app.
 // So chamadas de metodo: roda com o Treino cacando, sem pausar.
 
 import { gameDay } from "../controller/daily";
 import {
   DIAMOND_BODY, DONATE_INFO_BODY, FREEBIES_INFO_BODY, GUILD_SIGNIN_INFO_BODY, nextFreebieStep, readFreebiesSnapshot, RED_PACKET_LIST_BODY, SILK_BODY,
+  MAIL_FETCH_BODY, MAIL_NEXT_PAGE_BODY, MAIL_PREV_PAGE_BODY, ONLINE_QUERY_BODY, readMailPages,
   PAY_CARD_NAMES, PAY_CARDS_INFO_BODY, PAY_CLAIM_BODY, PAY_SHOP_CLOSE_BODY, PAY_SHOP_OPEN_BODY, payCardDay, payCardsToClaim, readPayCards, REWARD_CLOSE_BODY,
 } from "../controller/freebies";
 import { queryPlayer, sendCommand } from "./engine";
@@ -15,7 +17,9 @@ type Log = (msg: string) => void;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const SERVER_WAIT_MS = 2500;
-const MAX_STEPS = 10;
+const MAX_STEPS = 20;
+// Paginas do correio (7 mensagens cada) olhadas por passada.
+const MAX_MAIL_PAGES = 5;
 
 // Dia do jogo em que o app ja marcou o attendance (trava contra o re-sign pago).
 let checkinDay = -1;
@@ -98,15 +102,33 @@ export async function runFreebies(
   await q("SKIL", FREEBIES_INFO_BODY);
   await q("SKIL", GUILD_SIGNIN_INFO_BODY);
   await q("SKIL", RED_PACKET_LIST_BODY);
+  await q("SKIL", MAIL_FETCH_BODY);
+  await q("SKIL", ONLINE_QUERY_BODY);
   if (donate) {
     await q("SKIL", DONATE_INFO_BODY);
     await q("SKIL", "calls XGuildDailyTaskDocument SendGetDailyTaskInfo 0");
   }
   await sleep(SERVER_WAIT_MS);
+  let mailPagesSeen = 1;
+  // Volta o correio pra primeira pagina (onde o jogo abre) depois de folhear.
+  const mailBack = async () => {
+    for (let k = 0; k < MAX_MAIL_PAGES && (await readMailPages(q)).page > 0; k++) {
+      await q("SKIL", MAIL_PREV_PAGE_BODY);
+      await sleep(SERVER_WAIT_MS);
+    }
+  };
   for (let i = 0; i < MAX_STEPS; i++) {
     const s = await readFreebiesSnapshot(q);
     const step = nextFreebieStep(s, tried, checkinDay === gameDay(), donate);
     if (step.kind === "done") {
+      const mp = await readMailPages(q);
+      if (mp.page < mp.pages - 1 && mailPagesSeen < MAX_MAIL_PAGES) {
+        mailPagesSeen++;
+        await q("SKIL", MAIL_NEXT_PAGE_BODY);
+        await sleep(SERVER_WAIT_MS);
+        continue;
+      }
+      if (mailPagesSeen > 1) await mailBack();
       const card = await claimPayCards(q, int, log);
       if (halted) return { ok: false, erro: halted, done };
       return { ok: true, done, reason: [step.reason, card].filter(Boolean).join("; ") };
@@ -117,11 +139,16 @@ export async function runFreebies(
     if (step.key === "checkin") checkinDay = gameDay();
     await q("SKIL", step.body);
     await sleep(SERVER_WAIT_MS);
+    // Com a tela do correio fechada o ResMailOP nao atualiza a lista: pede de novo.
+    if (step.key.startsWith("mail")) await q("SKIL", MAIL_FETCH_BODY);
     // Uma leitura falha nao e saldo mudado: tenta de novo antes de parar.
     const reread = async (body: string) => (await int(body)) ?? (await sleep(1000), await int(body));
     const diamond = await reread(DIAMOND_BODY);
     const silk = await reread(SILK_BODY);
-    if (diamond !== s?.diamond || silk !== s?.silk) {
+    const same = diamond === s?.diamond && silk === s?.silk;
+    const grew = step.gain === true && diamond !== undefined && silk !== undefined && s?.diamond !== undefined && s?.silk !== undefined
+      && diamond >= s.diamond && silk >= s.silk;
+    if (!same && !grew) {
       halted = `Diamond/Silk mudaram depois de "${step.name}" (${s?.diamond}/${s?.silk} -> ${diamond}/${silk}); gratis do dia parado ate reabrir o app`;
       log(halted);
       return { ok: false, erro: halted, done };

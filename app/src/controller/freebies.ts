@@ -38,6 +38,16 @@
 //                 SendDonateMemberItem(id, n, null): +60 de contribuicao por item
 //                 (2026-11-10, feito a mao pelo usuario). So com "Doar no Support"
 //                 ligado (o usuario liberou doar o que o char tiver).
+//   Correio    -> anexos (XMailDocument, lido ao vivo em 2026-11-14). ReqMailInfo pede a
+//                 pagina atual (7 por pagina) e enche `mails` (MailItem: ID uint64, State
+//                 0 NONE, 1 CLAIMED, 2 REWARD, Title); CtlPage(true) vai pra proxima.
+//                 Pegar = ReqMailOP(MailOP.Claim 2, uid). Ha duas ReqMailOP de 2 args; a
+//                 de uint64 vem antes nos metadados e e a que o engine acha pelo nome.
+//                 Sem a tela do correio aberta o jogo nao mostra nada.
+//   Online     -> premio por tempo online (XOnlineRewardDocument): Status por faixa (0
+//                 contando, 1 liberado, 2 pego), QueryStatus atualiza; pegar =
+//                 SendGetReward(faixa). Em 2026-11-14 as 4 faixas estavam pegas.
+// Correio e online podem trazer Diamond ou Silk: neles o saldo pode subir, nunca cair.
 
 import type { EngineQuery } from "./tower";
 
@@ -69,6 +79,11 @@ export interface DonateAsk {
   have: number; // no inventario do char
 }
 
+export interface RewardMail {
+  uid: string; // uint64 em texto
+  title: string;
+}
+
 export interface FreebiesSnapshot {
   inWorld: boolean;
   me?: string;
@@ -85,14 +100,27 @@ export interface FreebiesSnapshot {
   cumulativeDays: number[];
   cumulativeTaken: number; // bits (1 << dia)
   littleGift?: number; // 0 = caixinha liberada
+  mails?: RewardMail[]; // da pagina lida, so os com anexo por pegar
+  online?: number[]; // Status de cada faixa do premio por tempo online
   diamond?: number;
   silk?: number;
 }
 
+// `gain`: o pedido pode trazer Diamond/Silk (correio, online); o saldo pode subir.
 export type FreebieStep =
   | { kind: "done"; reason: string }
   | { kind: "fail"; reason: string }
-  | { kind: "act"; key: string; name: string; body: string };
+  | { kind: "act"; key: string; name: string; body: string; gain?: boolean };
+
+export const MAIL_FETCH_BODY = "calls XMailDocument ReqMailInfo 0";
+export const MAIL_NEXT_PAGE_BODY = "callx XMailDocument CtlPage 1 -- b:1";
+export const MAIL_PREV_PAGE_BODY = "callx XMailDocument CtlPage 1 -- b:0";
+export const ONLINE_QUERY_BODY = "calls XOnlineRewardDocument QueryStatus 0";
+
+export function mailClaimBody(uid: string): string {
+  if (!/^[1-9]\d{0,19}$/.test(uid)) throw new Error(`uid de correio invalido: ${uid}`);
+  return `callx XMailDocument ReqMailOP 2 -- i:2 q:${uid}`;
+}
 
 const PACK_TYPE: Record<number, string> = { 1: "fixo", 2: "diario", 3: "semanal", 4: "mensal" };
 
@@ -197,6 +225,12 @@ export function nextFreebieStep(s: FreebiesSnapshot | null, tried: Set<string>, 
   }
   if (s.littleGift === 0 && !tried.has("little"))
     return { kind: "act", key: "little", name: "pegar a caixinha gratis do Daily Pack", body: "calls XWelfareDocument GetLittleGiftBag 0" };
+  const o = (s.online ?? []).findIndex((st, i) => st === 1 && !tried.has(`online${i}`));
+  if (o >= 0)
+    return { kind: "act", key: `online${o}`, name: `pegar o premio por tempo online (faixa ${o + 1})`, body: `callsi XOnlineRewardDocument SendGetReward 1 ${o} 0`, gain: true };
+  const m = (s.mails ?? []).find((x) => !tried.has(`mail${x.uid}`));
+  if (m)
+    return { kind: "act", key: `mail${m.uid}`, name: `pegar o anexo do correio "${m.title}"`, body: mailClaimBody(m.uid), gain: true };
   return { kind: "done", reason: freebiesSummary(s) };
 }
 
@@ -205,12 +239,44 @@ export function freebiesSummary(s: FreebiesSnapshot): string {
   const parts = [free.length ? `Event: ${free.map((k) => `${k.id} ${k.bought}/${k.limit}`).join(", ")}` : "Event: nenhum gratis na aba"];
   parts.push(s.todayChecked === undefined ? "attendance nao lido" : `attendance ${s.todayChecked ? "marcado" : "pendente"} (${s.dayChecked} dia(s))`);
   parts.push(s.littleGift === undefined ? "caixinha nao lida" : s.littleGift === 0 ? "caixinha liberada" : "caixinha pega");
+  if (s.online?.length) parts.push(`online ${s.online.filter((x) => x === 2).length}/${s.online.length} faixa(s) pega(s)`);
+  if (s.mails?.length) parts.push(`${s.mails.length} anexo(s) no correio`);
   if (s.redPackets.length) parts.push(`${s.redPackets.length} red envelope(s) da guilda, ${s.redPackets.filter((x) => x.canFetch).length} pra pegar`);
   if (s.guildBoxes.length) {
     const next = s.guildBoxes.find((x) => !x.open && s.guildProgress < x.need);
     parts.push(`guilda ${s.guildProgress} de progresso${next ? `, proximo bau com ${next.need}` : ", baus do sign-in abertos"}`);
   }
   return parts.join("; ");
+}
+
+// Anexos por pegar na pagina do correio que o jogo tem em memoria (State 2 = REWARD).
+// O ID e uint64: le as duas metades de 32 bits.
+export async function readRewardMails(q: EngineQuery): Promise<RewardMail[]> {
+  const int = async (body: string) => {
+    const r = await q("GETP", body);
+    return r.ok === true && typeof r.int === "number" ? r.int : undefined;
+  };
+  const M = "XMailDocument mails";
+  const n = (await int(`${M} get_Count`)) ?? 0;
+  const out: RewardMail[] = [];
+  for (let i = 0; i < Math.min(n, 7); i++) {
+    const b = `${M} get_Item:${i}`;
+    if ((await int(`${b} State`)) !== 2) continue;
+    const lo = await int(`${b} ID`);
+    const hi = await int(`${b} ID+4`);
+    if (lo === undefined || hi === undefined) continue;
+    const uid = ((BigInt(hi >>> 0) << 32n) | BigInt(lo >>> 0)).toString();
+    if (uid === "0") continue;
+    const title = (await q("GETP", `${b} Title`)).str;
+    out.push({ uid, title: typeof title === "string" ? title : "?" });
+  }
+  return out;
+}
+
+export async function readMailPages(q: EngineQuery): Promise<{ page: number; pages: number }> {
+  const page = (await q("GETP", "XMailDocument currPage")).int;
+  const pages = (await q("GETP", "XMailDocument pagesCnt")).int;
+  return { page: typeof page === "number" ? page : 0, pages: typeof pages === "number" ? pages : 0 };
 }
 
 // Le o estado. Os pacotes vem da lista que a aba Event mostra.
@@ -247,6 +313,11 @@ export async function readFreebiesSnapshot(q: EngineQuery): Promise<FreebiesSnap
   }
   s.cumulativeTaken = ((await int(`${D} get_CumulativeRewardTime`)) ?? -1) >>> 0;
   s.littleGift = await int("XWelfareDocument get_RewardLittleGiftBag");
+  s.online = [];
+  const O = "XOnlineRewardDocument Status";
+  const no = (await int(`${O} get_Count`)) ?? 0;
+  for (let i = 0; i < Math.min(no, 12); i++) s.online.push((await int(`${O} get_Item:${i}`)) ?? -1);
+  s.mails = await readRewardMails(q);
   if ((await q("GETP", "XGuildDocument get_bInGuild")).bool === true) {
     const G = "XGuildSignInDocument";
     s.guildProgress = (await int(`${G} get_Progress`)) ?? 0;
