@@ -4,6 +4,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** **Guild Boss** corrigido: a primeira versao olhava o World Boss (`XWorldBossDocument`), outro evento, e por isso nao entrava quando o Guild Boss abria. Agora o aberto vem do `XGuildDragonDocument bCanFight` e a entrada e o `ReqEnterScene` dele (o mesmo do Challenge), com nova tentativa a cada 10 s (ate 6). Na arena, quando o servidor abre a safe zone (golpe do boss), o bot para o auto-play, corre pro circulo mais perto (4 na arena, raio 6) e religa assim que ela fecha. O MOVE ia em JSON e o engine espera `x y z`: o char nunca andava. Parado ou no fim do tempo dentro da arena, religa o auto-play.
+- **Engine:** o `GETP` le campo **estatico** (antes lia o objeto no deslocamento do campo, ou seja, lixo); a resposta traz `"static":true`. Usado pelo aviso da safe zone do Guild Boss (`XSafeZoneDocument _isEffectSafeZoneActive`).
+
 - **App:** **Gratis do dia** tambem pega o **premio por tempo online** (faixa liberada, `XOnlineRewardDocument SendGetReward`) e os **anexos do correio** (`XMailDocument ReqMailOP` Claim, ate 5 paginas de 7 mensagens, volta pra primeira no fim). Nesses dois o Diamond e o Silk podem subir (compensacao de evento), nunca cair; caiu ou mudou em outro pedido, o card para como antes. O premio do dia seguinte nao existe neste servidor e o Battle Pass gratis fica pra depois.
 
 ## [0.150.0] - 2026-11-14
