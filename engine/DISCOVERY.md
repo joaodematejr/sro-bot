@@ -557,6 +557,23 @@ carregar antes de despejar.
 - Battle Pass (`XEternalPathwayDocument`): pegar pede `List<ItemRewardKey>` de
   gratis e pagos (`SendRequestReceiveReward`); nao feito.
 
+## Guild Boss (2026-11-16)
+
+- E o `XGuildDragonDocument` (XSys_GuildDragon 85), nao o `XWorldBossDocument` (World
+  Boss, outro evento). Aberto: `get_bCanFight` (ligado pelo HintNotify). Entrar:
+  `calls XGuildDragonDocument ReqEnterScene 0` (o Challenge do `XGuildDragonView`, depois
+  de sair da party; recusa no Guild Hall e com o job ativo).
+- Arena: `XScene get_SceneType` 11 (SCENE_GUILD_BOSS), cena `XGlobalConfig
+  GetInt:"GuildBossSceneID"` = 5.
+- Safe zone: o servidor manda `PtcG2C_OpenSafeZoneGuildBoss` (isOpen), que so liga o
+  estatico `XSafeZoneDocument _isEffectSafeZoneActive` (GETP de estatico, resposta com
+  `"static":true`). Circulos: `XSafeZoneDocument GetRegionListBySceneId:5 get_Item:i`
+  com `RegionType` 2, `RegionCategory` > 0, `RegionPos [#0..2]` e `RegionSize [#0]`
+  (floats lidos como int32). Na cena 5: (480,127,160), (480,126.56,235),
+  (533,126.56,220), (533,126.56,148), raio 6. Dentro do circulo aberto o jogo poe
+  `AI.BlockSkill`; o `get_IsInSafeRegion` do jogo nunca muda (isInSide nunca e escrito).
+- `MOVE` recebe `x y z` em texto (Navigate do `_nav`).
+
 ## Guild Store (2026-11-11)
 
 - E a loja generica (`XNormalShopDocument`) no sistema `XSys_Mall_Guild` (324),

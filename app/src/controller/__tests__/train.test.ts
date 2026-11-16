@@ -19,6 +19,7 @@ import {
   HUNT_OFF,
   HUNT_ON,
   IDLE_MS,
+  deathsAtStart,
   newTrainProgress,
   nextTrainStep,
   OPT,
@@ -39,6 +40,7 @@ import {
   PLAYER_NEAR_MS,
   DODGE_COOLDOWN_MS,
   pickDodgeChannel,
+  stopReason,
 } from "../train";
 
 const alive = (exp: number, level = 60): TrainSnapshot => ({ inWorld: true, dead: false, exp, level });
@@ -753,4 +755,27 @@ test("no mapa do ponto sem posicao (0, 0, 0 depois de trocar de canal, 13:21): e
   // Em outro mapa continua viajando.
   const other = nextTrainStep({ ...alive(100), scene: 100003 }, cfg, p, 1000);
   assert.equal(other.kind === "act" && other.id, "leave");
+});
+
+test("vigia: char ja morto quando o Treino comeca (outra atividade) nao conta pro limite", () => {
+  const cfg = { ...DEFAULT_TRAIN_CONFIG, deathLimit: 1 };
+  let p = newTrainProgress(0, true);
+  p = trackTrain(p, dead(100), 1000);
+  assert.equal(p.deaths, 0);
+  assert.notEqual(nextTrainStep(dead(100), cfg, p, 1000).kind, "done");
+  // Revive e morre de novo no Treino: essa conta.
+  p = trackTrain(p, alive(100), 60000);
+  p = trackTrain(p, dead(100), 70000);
+  assert.equal(p.deaths, 1);
+});
+
+test("mortes do Treino somam entre as rodadas do dia; zeram na virada ou ligando na mao", () => {
+  const carry = { day: 20770, deaths: 1 };
+  assert.equal(deathsAtStart(carry, 20770, false), 1); // voltou de um evento
+  assert.equal(deathsAtStart(carry, 20771, false), 0); // virou o dia
+  assert.equal(deathsAtStart(carry, 20770, true), 0); // ligado na mao
+  assert.equal(deathsAtStart(null, 20770, false), 0);
+  // Com limite 1 e 1 morte de antes do evento, a volta ja respeita o limite.
+  const p = { ...newTrainProgress(0), deaths: deathsAtStart(carry, 20770, false) };
+  assert.match(stopReason(alive(100), { ...DEFAULT_TRAIN_CONFIG, deathLimit: 1 }, p) ?? "", /limite 1/);
 });

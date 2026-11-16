@@ -2712,6 +2712,24 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
             if (!fi) return "{\"ok\":false,\"erro\":\"getter/campo nao achado\"}";
             int iv = 0;
             void* sp = nullptr;
+            // Campo estatico nao fica no objeto: o obj+offset lia lixo. Le pelo
+            // il2cpp (ex.: XSafeZoneDocument _isEffectSafeZoneActive, a safe zone do
+            // Guild Boss aberta pelo servidor). So int/bool/ponteiro, sem "+N".
+            int fflags = g_api.field_get_flags ? g_api.field_get_flags(fi) : 0;
+            if (fflags & FIELD_ATTR_STATIC) {
+                if (field_extra || !g_api.field_static_get_value)
+                    return "{\"ok\":false,\"erro\":\"estatico sem leitura\"}";
+                uint64_t sv = 0;
+                {
+                    FaultGuard guard;
+                    g_api.field_static_get_value(fi, &sv);
+                }
+                if (field_is_string(fi)) return string_json((void*)sv);
+                char sb[96];
+                std::snprintf(sb, sizeof(sb), "{\"ok\":true,\"int\":%d,\"bool\":%s,\"static\":true}", (int)(uint32_t)sv,
+                              (sv & 0xff) ? "true" : "false");
+                return sb;
+            }
             if (field_extra) {
                 FaultGuard guard;
                 if (!safe_read(&iv, (char*)obj + g_api.field_get_offset(fi) + field_extra, sizeof(iv)))

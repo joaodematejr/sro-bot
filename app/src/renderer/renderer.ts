@@ -1194,6 +1194,7 @@ interface TrainSpotUi {
 
 interface TrainUiConfig {
   deathLimit: number;
+  freshDeaths?: boolean;
   setupPotions: boolean;
   spot?: TrainSpotUi; // config antiga (um ponto so); vira o primeiro da lista
   spots?: TrainSpotUi[];
@@ -1837,7 +1838,8 @@ async function huntOffSafely(): Promise<void> {
   }
 }
 
-async function runTrainActivity(on: boolean): Promise<void> {
+// `fresh`: ligado na mao pelo usuario, zera a conta de mortes do dia.
+async function runTrainActivity(on: boolean, fresh = false): Promise<void> {
   if (!on) {
     await window.sro.stopTrain();
     await huntOffSafely();
@@ -1853,7 +1855,7 @@ async function runTrainActivity(on: boolean): Promise<void> {
   lastTrainReason = "";
   setAf(true);
   try {
-    const r = await window.sro.runTrain(readTrainUi());
+    const r = await window.sro.runTrain({ ...readTrainUi(), freshDeaths: fresh });
     lastTrainReason = r.reason ?? "";
     if (r.ok) log(`treino concluido (${r.deaths ?? 0} morte(s)).`);
     else if (r.erro !== "parado") log("treino falhou: " + (r.erro ?? "char em mundo?"));
@@ -2035,7 +2037,7 @@ async function onActivityToggle(id: string): Promise<void> {
       return;
     }
     if (await waitInWorld()) {
-      if (polling) await runTrainActivity(true);
+      if (polling) await runTrainActivity(true, true);
     }
   } else if (id === "act-tower" && on) {
     if (await waitInWorld()) {
@@ -2873,7 +2875,7 @@ function wire(): void {
   });
   $("btn-af-on").addEventListener("click", () => {
     log("ligando treino...");
-    void runTrainActivity(true);
+    void runTrainActivity(true, true);
   });
   $("btn-af-off").addEventListener("click", async () => {
     log("parando treino...");

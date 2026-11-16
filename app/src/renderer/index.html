@@ -209,7 +209,7 @@
                   <label class="flex items-center gap-2">
                     Parar com
                     <input type="number" id="tr-deaths" min="0" max="99" value="0" class="w-16 bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100" />
-                    mortes <span class="text-xs text-muted">(0 = nunca)</span>
+                    mortes no dia <span class="text-xs text-muted">(0 = nunca; só as do Treino, morte em evento não conta; zera na virada ou ligando o Treino)</span>
                   </label>
                   <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="tr-potions" class="accent-gold w-4 h-4" checked /> Pôr poção no espaço vazio do Recover</label>
                   <div class="md:col-span-2 space-y-1">
@@ -342,7 +342,7 @@
                 <div class="flex items-center justify-between">
                   <div>
                     <div class="text-sm font-semibold">Guild Boss</div>
-                    <div class="text-xs text-muted">participa do Boss da Guilda automaticamente: sai da party se necessario, compra buffs por gold e desvia na Safe Zone durante o golpe supremo</div>
+                    <div class="text-xs text-muted">quando o Guild Boss abre: sai da party, entra na arena, liga o auto-play e, quando o servidor abre a safe zone (golpe do boss), para o auto-play, corre pro círculo mais perto e religa quando ele fecha. Os buffs por gold ainda não são comprados</div>
                   </div>
                   <div class="flex items-center gap-3">
                     <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer select-none"><input type="checkbox" id="act-guildboss" class="accent-gold w-4 h-4" /> Ativa</label>

@@ -3,6 +3,8 @@
 
 import {
   afterTrainAction,
+  type DeathCarry,
+  deathsAtStart,
   HUNT_ON,
   RESET_BORN_BODY,
   newTrainProgress,
@@ -93,6 +95,7 @@ import { LEVELING_OPEN_BODY, levelingPhase, levelingText, readLeveling, shouldOp
 import { levelUpSkills } from "./skills";
 import { sellJunk } from "./sell";
 import { shouldSell } from "../controller/sell";
+import { gameDay } from "../controller/daily";
 import { queryPlayer, sendCommand } from "./engine";
 
 type Log = (msg: string) => void;
@@ -134,6 +137,9 @@ export function stopTrain(): void {
 // Pausa segura: o treino sai do combate, leva o char pra cidade salva e conclui
 // (pra trocar de char sem deixar o principal no meio dos monstros). null cancela
 // enquanto ele ainda nao saiu pra cidade.
+// Mortes do Treino no dia, entre as rodadas (ver deathsAtStart).
+let deathCarry: DeathCarry | null = null;
+
 export function pauseTrain(reason: string | null): void {
   pauseRequested = reason;
 }
@@ -353,6 +359,13 @@ export async function runTrain(
   // Com ponto salvo e o char fora dele: vai primeiro, liga a caca ao chegar.
   const spots = trainSpots(cfg);
   const s0 = await readTrainSnapshot(q);
+  if (s0?.dead) {
+    prog = newTrainProgress(Date.now(), true);
+    log("o char ja estava morto ao comecar o Treino (outra atividade): essa morte nao conta pro limite.");
+  }
+  prog.deaths = deathsAtStart(deathCarry, gameDay(), cfg.freshDeaths === true);
+  deathCarry = { day: gameDay(), deaths: prog.deaths };
+  if (prog.deaths > 0) log(`mortes do Treino hoje: ${prog.deaths}${cfg.deathLimit > 0 ? `/${cfg.deathLimit}` : ""} (somam depois dos eventos; zera ligando o Treino na mao).`);
   prog.spotIdx = nearestSpotIdx(s0, spots);
   // Comecou num ponto de reserva: conta o tempo pra voltar pro ponto 1.
   if (prog.spotIdx !== 0) prog.reserveSince = Date.now();
@@ -383,7 +396,7 @@ export async function runTrain(
   } = {};
   let nextAreaCheck = Date.now() + AREA_FIRST_MS;
   let lastVerdict = "";
-  let lastDeaths = 0;
+  let lastDeaths = prog.deaths;
   let lastWait = "";
   let noMonsterHinted = false;
   let nextSupply = Date.now() + SUPPLY_FIRST_MS;
@@ -562,6 +575,7 @@ export async function runTrain(
     }
     if (prog.deaths > lastDeaths) {
       lastDeaths = prog.deaths;
+      deathCarry = { day: gameDay(), deaths: prog.deaths };
       log(`morreu (${prog.deaths}${cfg.deathLimit > 0 ? `/${cfg.deathLimit}` : ""}).`);
     }
     // Parado sem alvo: anda ate o monstro mais perto e religa a caca (andar

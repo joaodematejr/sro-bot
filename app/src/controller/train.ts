@@ -68,6 +68,7 @@ import type { TeamConfig } from "./team";
 
 export interface TrainConfig {
   deathLimit: number; // para depois de N mortes (0 = nunca)
+  freshDeaths?: boolean; // ligado na mao: zera a conta de mortes do dia
   setupPotions: boolean; // escolhe a pocao do inventario se o espaco estiver vazio
   restoreOptions?: boolean; // ao parar, devolve as opcoes que o treino mudou (padrao: sim)
   spot?: TrainSpot; // ponto unico (config antiga); a lista `spots` tem prioridade
@@ -371,9 +372,24 @@ export interface TrainProgress {
   channelOverride: number | null; // canal escolhido pela fuga (vale no lugar do canal do ponto)
 }
 
-export function newTrainProgress(now: number): TrainProgress {
+// `startedDead`: o char ja estava morto quando o Treino comecou (morreu em outra
+// atividade, ex.: o golpe do Guild Boss em 2026-11-16). Essa morte nao e do Treino e
+// nao conta pro limite; com limite 1 ela parava o Treino e o char ficava na cidade.
+// Mortes do Treino ja contadas hoje: somam entre as rodadas (o Treino recomeca depois
+// de cada evento e antes zerava, entao o limite quase nunca disparava). Zera na virada
+// do dia do jogo ou quando o Treino e ligado na mao.
+export interface DeathCarry {
+  day: number;
+  deaths: number;
+}
+
+export function deathsAtStart(carry: DeathCarry | null, day: number, fresh: boolean): number {
+  return !fresh && carry && carry.day === day ? carry.deaths : 0;
+}
+
+export function newTrainProgress(now: number, startedDead = false): TrainProgress {
   return {
-    deaths: 0, deadSince: null, wasDead: false, lastExp: -1, lastLevel: -1, lastGainAt: now, expAt: now, resetAt: 0,
+    deaths: 0, deadSince: null, wasDead: startedDead, lastExp: -1, lastLevel: -1, lastGainAt: now, expAt: now, resetAt: 0,
     huntSentAt: 0, reviveSentAt: 0, goingToSpot: false, moveSentAt: 0,
     spotIdx: 0, deathsAtSpot: 0, fewSince: null, travelSentAt: 0, travelTries: 0, channelSentAt: 0, channelTries: 0,
     stopReason: null, pauseReason: null, lowHpAtSpot: null, homeSince: 0, farSince: null,
