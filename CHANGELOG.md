@@ -4,6 +4,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** Treino: se o char ja esta morto quando o Treino comeca (morreu em outra atividade, como o golpe do Guild Boss), essa morte nao conta pro limite de mortes. Em 2026-11-16 o Treino voltou do Guild Boss com o char morto, contou 1/1, parou e deixou o char na cidade por 22 min.
 - **App:** **Guild Boss** corrigido: a primeira versao olhava o World Boss (`XWorldBossDocument`), outro evento, e por isso nao entrava quando o Guild Boss abria. Agora o aberto vem do `XGuildDragonDocument bCanFight` e a entrada e o `ReqEnterScene` dele (o mesmo do Challenge), com nova tentativa a cada 10 s (ate 6). Na arena, quando o servidor abre a safe zone (golpe do boss), o bot para o auto-play, corre pro circulo mais perto (4 na arena, raio 6) e religa assim que ela fecha. O MOVE ia em JSON e o engine espera `x y z`: o char nunca andava. Parado ou no fim do tempo dentro da arena, religa o auto-play.
 - **Engine:** o `GETP` le campo **estatico** (antes lia o objeto no deslocamento do campo, ou seja, lixo); a resposta traz `"static":true`. Usado pelo aviso da safe zone do Guild Boss (`XSafeZoneDocument _isEffectSafeZoneActive`).
 
