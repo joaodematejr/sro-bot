@@ -44,7 +44,7 @@ contextBridge.exposeInMainWorld("sro", {
   switchChar: (name: string) => ipcRenderer.invoke("engine:switchchar", name),
   mainChar: () => ipcRenderer.invoke("engine:mainchar"),
   isChar: (entry: string) => ipcRenderer.invoke("engine:ischar", entry),
-  runTrain: (cfg: { deathLimit: number; setupPotions: boolean; spot?: { scene: number; x: number; y: number; z: number } }) =>
+  runTrain: (cfg: { deathLimit: number; freshDeaths?: boolean; setupPotions: boolean; spot?: { scene: number; x: number; y: number; z: number } }) =>
     ipcRenderer.invoke("engine:train", cfg),
   stopTrain: () => ipcRenderer.invoke("engine:trainstop"),
   pauseTrain: (reason: string | null) => ipcRenderer.invoke("engine:trainpause", reason),
