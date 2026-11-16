@@ -353,6 +353,10 @@ export async function runTrain(
   // Com ponto salvo e o char fora dele: vai primeiro, liga a caca ao chegar.
   const spots = trainSpots(cfg);
   const s0 = await readTrainSnapshot(q);
+  if (s0?.dead) {
+    prog = newTrainProgress(Date.now(), true);
+    log("o char ja estava morto ao comecar o Treino (outra atividade): essa morte nao conta pro limite.");
+  }
   prog.spotIdx = nearestSpotIdx(s0, spots);
   // Comecou num ponto de reserva: conta o tempo pra voltar pro ponto 1.
   if (prog.spotIdx !== 0) prog.reserveSince = Date.now();

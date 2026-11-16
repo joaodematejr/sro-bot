@@ -754,3 +754,15 @@ test("no mapa do ponto sem posicao (0, 0, 0 depois de trocar de canal, 13:21): e
   const other = nextTrainStep({ ...alive(100), scene: 100003 }, cfg, p, 1000);
   assert.equal(other.kind === "act" && other.id, "leave");
 });
+
+test("vigia: char ja morto quando o Treino comeca (outra atividade) nao conta pro limite", () => {
+  const cfg = { ...DEFAULT_TRAIN_CONFIG, deathLimit: 1 };
+  let p = newTrainProgress(0, true);
+  p = trackTrain(p, dead(100), 1000);
+  assert.equal(p.deaths, 0);
+  assert.notEqual(nextTrainStep(dead(100), cfg, p, 1000).kind, "done");
+  // Revive e morre de novo no Treino: essa conta.
+  p = trackTrain(p, alive(100), 60000);
+  p = trackTrain(p, dead(100), 70000);
+  assert.equal(p.deaths, 1);
+});
