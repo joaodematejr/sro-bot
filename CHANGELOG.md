@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.152.0] - 2026-11-18
+
 - **App:** **Guild Boss**: a fuga pra safe zone agora segue o aviso do golpe forte (a notice "<boss> is going to destroy the place, quickly find a safezone" do script da arena, lida no `BattleMain NoticeTime` e no `XLevelScriptMgr`). A 0.151.0 seguia o `_isEffectSafeZoneActive`, que em 2026-11-18 ficou ligado a luta inteira: o char ia pro circulo e ficava la sem atacar (dentro dele o jogo bloqueia as skills). Agora, no aviso, para o auto-play, corre pro circulo mais perto, fica ate 10 s depois do aviso sumir e religa o auto-play pra voltar pro boss.
 - **App:** Guild Boss: com o evento fechado e o char ainda na arena, sai dela (`XGuildDragonDocument ReqQuitScene`). O Treino so religa com o char fora da arena: em 2026-11-18 ele voltou la dentro, tirou o char do circulo e o char morreu a cada 30 s ate o fim. Uma leitura falha da cena nao encerra mais a luta (precisa de 2 seguidas fora da arena), e marcar o Guild Boss com ele ja rodando nao abre um segundo loop.
 - **App:** Guild Boss entra sozinho quando abre: a checagem saiu da fila de 1 min das atividades e roda num timer proprio a cada 15 s. Em 2026-11-18 ele nao entrou as 12:00 UTC e o usuario teve de desmarcar e marcar a caixa; a janela dos envelopes da guilda (12:00 a 14:15) segura o Gratis do dia na fila bem nessa hora, e um erro em qualquer atividade da fila pulava o resto. Agora cada atividade da fila roda mesmo se a anterior falhar, o log avisa "Guild Boss aberto: entrando" (ou que o Treino nao parou a tempo) e o Qigong nao roda durante o Guild Boss (ele leva o char pro Guild Hall, de onde o jogo nao deixa entrar).
