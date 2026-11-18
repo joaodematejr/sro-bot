@@ -7,11 +7,13 @@ import {
   type GuildBossConfig,
   guildBossOpenNow,
   HUNT_ON_BODY,
+  inGuildBossArena,
   newGuildBossMemory,
   nextGuildBossStep,
   readGuildBossSnapshot,
   readSafeZones,
   type SafeZone,
+  trackGuildBossWarning,
 } from "../controller/guildboss";
 import { queryPlayer, sendCommand } from "./engine";
 
@@ -19,8 +21,12 @@ type Log = (msg: string) => void;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const RUN_TIMEOUT_MS = 30 * 60 * 1000; // max 30 min por sessao de Guild Boss
-// Na arena o passo e curto: a safe zone abre e fecha em segundos.
-const ARENA_TICK_MS = 700;
+// Na arena o passo e curto: o aviso do golpe dura 4 s e a corrida ate o circulo
+// leva uns 5 s.
+const ARENA_TICK_MS = 300;
+// Leituras seguidas fora da arena antes de dar a luta por encerrada (uma leitura
+// falha da cena nao encerra).
+const LEFT_ARENA_READS = 2;
 const TICK_MS = 1500;
 
 let stopRequested = false;
@@ -31,6 +37,10 @@ export function stopGuildBoss(): void {
 
 export async function isGuildBossOpen(host: string, port: number): Promise<boolean> {
   return guildBossOpenNow((tag, body) => sendCommand(host, port, tag, body)).catch(() => false);
+}
+
+export async function isInGuildBossArena(host: string, port: number): Promise<boolean> {
+  return inGuildBossArena((tag, body) => sendCommand(host, port, tag, body)).catch(() => false);
 }
 
 export async function runGuildBoss(
@@ -53,7 +63,8 @@ export async function runGuildBoss(
   let mem = newGuildBossMemory();
   let zones: SafeZone[] = [];
   let wasInArena = false;
-  let warnedNoStatic = false;
+  let warnedNoWarning = false;
+  let outsideReads = 0;
   // Nunca deixa o char parado na arena com o auto-play desligado (a safe zone o desliga).
   const huntBackOn = async () => {
     const end = await queryPlayer(host, port).catch(() => null);
@@ -75,17 +86,25 @@ export async function runGuildBoss(
         s.zones = zones;
         log(`Guild Boss: ${zones.length} safe zone(s) na arena`);
       }
-      if (cfg.dodgeSupreme && s.safeZoneOpen === undefined && !warnedNoStatic) {
-        warnedNoStatic = true;
-        log("Guild Boss: o engine nao leu o aviso da safe zone (engine antigo?); sem desvio nesta luta");
+      if (cfg.dodgeSupreme && s.noticeOn === undefined && s.scriptCount === undefined && !warnedNoWarning) {
+        warnedNoWarning = true;
+        log("Guild Boss: o aviso do golpe do boss nao foi lido; sem desvio nesta luta");
       }
       wasInArena = true;
-    } else if (s && wasInArena && s.inWorld) {
-      log("Guild Boss: saiu da arena; fim da luta.");
-      return { ok: true };
+      outsideReads = 0;
+    } else if (s && wasInArena && s.inWorld && s.sceneType >= 0) {
+      if (++outsideReads >= LEFT_ARENA_READS) {
+        log("Guild Boss: saiu da arena; fim da luta.");
+        return { ok: true };
+      }
+      await sleep(ARENA_TICK_MS);
+      continue;
     }
 
     const now = Date.now();
+    const dodgeWas = mem.dodgeUntil;
+    mem = trackGuildBossWarning(mem, s, now);
+    if (cfg.dodgeSupreme && dodgeWas < now && mem.dodgeUntil > now) log("Guild Boss: aviso do golpe forte do boss; indo pra safe zone");
     const step = nextGuildBossStep(s, cfg, mem, now);
     mem = afterGuildBossStep(mem, step, now);
 

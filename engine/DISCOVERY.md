@@ -573,6 +573,18 @@ carregar antes de despejar.
   (533,126.56,220), (533,126.56,148), raio 6. Dentro do circulo aberto o jogo poe
   `AI.BlockSkill`; o `get_IsInSafeRegion` do jogo nunca muda (isInSide nunca e escrito).
 - `MOVE` recebe `x y z` em texto (Navigate do `_nav`).
+- Ao vivo em 2026-11-18 (12:00 a 12:20 UTC, boss JeonUk, 78,8 M de HP): o
+  `_isEffectSafeZoneActive` ficou `true` a luta inteira, entao nao e o aviso do golpe.
+  O golpe forte e a skill `975472616` do boss (`XEntityMgr get_Player get_AI _target
+  get_Skill _skill _core _id`): tirou 19 mil de HP em menos de 1 s, no meio da arena.
+- O aviso e a notice "<boss> is going to destroy the place, quickly find a safezone"
+  da `BattleMain` (Level_Cmd_Notice do script da arena, 4 s: o `_notice_duration`
+  ficou 4.0). `BattleMain NoticeTime` fica diferente de 0 enquanto ela aparece;
+  `XLevelScriptMgr CommandCount` sobe a cada comando e `_currentCmd cmd` diz o tipo
+  (6 = Notice, 24 = NpcPopSpeek a cada 30 s). O texto do script nao traduz pelo
+  `XStringTable` ("StringTable not set up yet X_Level_...").
+- Fim: o char fica na arena depois do evento (`bCanFight` falso). Sair:
+  `XGuildDragonDocument ReqQuitScene` (o `XScene ReqLeaveScene`), sem prova ao vivo.
 
 ## Guild Store (2026-11-11)
 

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   afterGuildBossStep,
   DEFAULT_GUILD_BOSS_CONFIG,
+  DODGE_HOLD_MS,
   ENTER_BOSS_BODY,
   ENTER_MAX_TRIES,
   ENTER_RETRY_MS,
@@ -12,13 +13,16 @@ import {
   guildBossOpenNow,
   HUNT_OFF_BODY,
   HUNT_ON_BODY,
+  LEAVE_ARENA_BODY,
   LEAVE_TEAM_BODY,
+  LEVEL_CMD_NOTICE,
   MOVE_RETRY_MS,
   nearestZone,
   newGuildBossMemory,
   nextGuildBossStep,
   readSafeZones,
   type SafeZone,
+  trackGuildBossWarning,
 } from "../guildboss";
 
 // As 4 safe zones da cena 5, lidas ao vivo em 2026-11-16.
@@ -50,7 +54,7 @@ function snap(p: Partial<GuildBossSnapshot> = {}): GuildBossSnapshot {
 }
 
 function arena(p: Partial<GuildBossSnapshot> = {}): GuildBossSnapshot {
-  return snap({ inBossScene: true, sceneId: 5, sceneType: 11, zones: ZONES, pos: [505, 127, 190], safeZoneOpen: false, ...p });
+  return snap({ inBossScene: true, sceneId: 5, sceneType: 11, zones: ZONES, pos: [505, 127, 190], noticeOn: false, scriptCount: 16, scriptCmd: 24, ...p });
 }
 
 test("guild boss: fora da guilda conclui; fechado nao mexe nem na party", () => {
@@ -87,22 +91,53 @@ test("guild boss: na arena liga o auto-play; tela de fim sai uma vez", () => {
   assert.notEqual(nextGuildBossStep(arena({ rewardVisible: true }), cfg, m, T).kind === "act" && "reward", "reward");
 });
 
-test("guild boss: safe zone aberta para o auto-play, corre pra zona mais perto, espera e religa quando fecha", () => {
-  let m = newGuildBossMemory();
-  const off = nextGuildBossStep(arena({ safeZoneOpen: true }), cfg, m, T);
+test("guild boss: o aviso vem da notice na tela ou de um Notice novo no script da arena", () => {
+  let m = trackGuildBossWarning(newGuildBossMemory(), arena(), T);
+  assert.equal(m.lastScriptCount, 16);
+  assert.ok(m.dodgeUntil < T); // primeira leitura do contador nao e aviso
+  // Comando novo que nao e Notice (a fala do NPC a cada 30 s): segue lutando.
+  m = trackGuildBossWarning(m, arena({ scriptCount: 17, scriptCmd: 24 }), T);
+  assert.ok(m.dodgeUntil < T);
+  // Comando Notice novo: aviso, mesmo antes da notice aparecer na tela.
+  const n = trackGuildBossWarning(m, arena({ scriptCount: 18, scriptCmd: LEVEL_CMD_NOTICE }), T);
+  assert.equal(n.dodgeUntil, T + DODGE_HOLD_MS);
+  // Notice na tela empurra a espera enquanto aparece.
+  const v = trackGuildBossWarning(n, arena({ scriptCount: 18, scriptCmd: LEVEL_CMD_NOTICE, noticeOn: true }), T + 3000);
+  assert.equal(v.dodgeUntil, T + 3000 + DODGE_HOLD_MS);
+  // Fora da arena nao mexe.
+  assert.equal(trackGuildBossWarning(m, snap({ noticeOn: true }), T), m);
+});
+
+test("guild boss: no aviso para o auto-play, corre pra zona mais perto, espera e religa depois", () => {
+  // O estatico da safe zone ficou ligado a luta inteira: sem aviso, luta.
+  assert.equal(nextGuildBossStep(arena(), cfg, newGuildBossMemory(), T).kind, "wait");
+  let m = trackGuildBossWarning(newGuildBossMemory(), arena({ noticeOn: true }), T);
+  const off = nextGuildBossStep(arena({ noticeOn: true }), cfg, m, T);
   assert.equal(off.kind === "act" && off.body, HUNT_OFF_BODY);
-  const mv = nextGuildBossStep(arena({ safeZoneOpen: true, autoPlay: false }), cfg, m, T);
+  const mv = nextGuildBossStep(arena({ autoPlay: false }), cfg, m, T);
   assert.deepEqual(mv.kind === "move" && mv.pos, [480, 127, 160]); // (505,190) fica mais perto de (480,160)
   m = afterGuildBossStep(m, mv, T);
-  assert.equal(nextGuildBossStep(arena({ safeZoneOpen: true, autoPlay: false }), cfg, m, T + MOVE_RETRY_MS - 1).kind, "wait");
-  assert.equal(nextGuildBossStep(arena({ safeZoneOpen: true, autoPlay: false }), cfg, m, T + MOVE_RETRY_MS).kind, "move");
-  const inside = nextGuildBossStep(arena({ safeZoneOpen: true, autoPlay: false, pos: [481, 127, 161] }), cfg, m, T);
+  assert.equal(nextGuildBossStep(arena({ autoPlay: false }), cfg, m, T + MOVE_RETRY_MS - 1).kind, "wait");
+  assert.equal(nextGuildBossStep(arena({ autoPlay: false }), cfg, m, T + MOVE_RETRY_MS).kind, "move");
+  const inside = nextGuildBossStep(arena({ autoPlay: false, pos: [481, 127, 161] }), cfg, m, T + 5000);
   assert.equal(inside.kind, "wait");
-  const back = nextGuildBossStep(arena({ safeZoneOpen: false, autoPlay: false, pos: [481, 127, 161] }), cfg, m, T);
+  // Passou a espera: religa o auto-play e a IA volta pro boss.
+  const back = nextGuildBossStep(arena({ autoPlay: false, pos: [481, 127, 161] }), cfg, m, T + DODGE_HOLD_MS);
   assert.equal(back.kind === "act" && back.body, HUNT_ON_BODY);
-  // Sem a opcao de desviar, ou sem o aviso lido (engine antigo), segue lutando.
-  assert.equal(nextGuildBossStep(arena({ safeZoneOpen: true }), { ...cfg, dodgeSupreme: false }, m, T).kind, "wait");
-  assert.equal(nextGuildBossStep(arena({ safeZoneOpen: undefined }), cfg, m, T).kind, "wait");
+  // Sem a opcao de desviar, segue lutando.
+  assert.equal(nextGuildBossStep(arena(), { ...cfg, dodgeSupreme: false }, m, T).kind, "wait");
+});
+
+test("guild boss: evento fechado com o char na arena sai uma vez", () => {
+  let m = newGuildBossMemory();
+  const leave = nextGuildBossStep(arena({ canFight: false }), cfg, m, T);
+  assert.equal(leave.kind === "act" && leave.body, LEAVE_ARENA_BODY);
+  m = afterGuildBossStep(m, leave, T);
+  assert.equal(nextGuildBossStep(arena({ canFight: false }), cfg, m, T).kind, "wait");
+  // Morto espera o renascer antes; a tela de fim vem antes de sair.
+  assert.equal(nextGuildBossStep(arena({ canFight: false, dead: true }), cfg, newGuildBossMemory(), T).kind, "wait");
+  const rw = nextGuildBossStep(arena({ canFight: false, rewardVisible: true }), cfg, newGuildBossMemory(), T);
+  assert.equal(rw.kind === "act" && rw.body, EXIT_REWARD_BODY);
 });
 
 test("guild boss: dentro da zona com folga da borda", () => {

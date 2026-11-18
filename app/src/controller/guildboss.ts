@@ -11,16 +11,24 @@
 //   Entrar       -> XGuildDragonDocument ReqEnterScene (o que o Challenge do
 //                   XGuildDragonView chama, depois de sair da party). Nao entra do
 //                   Guild Hall (SCENE_GUILD_HALL 10) nem com o job ativo.
-//   Safe zone    -> o servidor abre com o PtcG2C_OpenSafeZoneGuildBoss (isOpen), que
-//                   so liga o campo estatico XSafeZoneDocument _isEffectSafeZoneActive
-//                   (le com o GETP de estatico do engine; o engine velho le lixo, por
-//                   isso so vale com "static": true). As zonas sao os circulos da
-//                   RegionList da cena (GetRegionListBySceneId: RegionType 2,
-//                   RegionPos x/y/z, RegionSize[0] raio): na cena 5 sao 4, raio 6.
-//                   Dentro do circulo aberto o jogo bloqueia as skills (AI BlockSkill),
-//                   e o get_IsInSafeRegion do jogo nunca muda (isInSide fica falso):
-//                   o "dentro" e a distancia da posicao ao centro.
-//   Fim          -> LevelRewardGuildBossHandler OnContinueClick (sem prova ao vivo).
+//   Safe zone    -> os circulos da RegionList da cena (GetRegionListBySceneId:
+//                   RegionType 2, RegionPos x/y/z, RegionSize[0] raio): na cena 5 sao
+//                   4, raio 6. Dentro do circulo o jogo bloqueia as skills (AI
+//                   BlockSkill), e o get_IsInSafeRegion do jogo nunca muda: o "dentro"
+//                   e a distancia da posicao ao centro. O estatico
+//                   XSafeZoneDocument _isEffectSafeZoneActive NAO serve de aviso: em
+//                   2026-11-18 ficou ligado a luta inteira (12:08 a 12:20 UTC), e
+//                   seguir ele deixava o char parado no circulo sem atacar.
+//   Aviso        -> antes do golpe forte o script da arena mostra a notice "<boss> is
+//                   going to destroy the place, quickly find a safezone" na
+//                   BattleMain (Level_Cmd_Notice, 4 s). Le o BattleMain NoticeTime
+//                   (diferente de 0 enquanto a notice aparece) e o XLevelScriptMgr
+//                   (CommandCount sobe a cada comando; _currentCmd cmd 6 = Notice).
+//                   Em 2026-11-18 o golpe (skill 975472616 do JeonUk) tirou 19 mil
+//                   de HP em menos de 1 s no meio da arena.
+//   Fim          -> evento fechado (bCanFight falso) com o char ainda na arena:
+//                   XGuildDragonDocument ReqQuitScene (o XScene ReqLeaveScene).
+//   Tela de fim  -> LevelRewardGuildBossHandler OnContinueClick (sem prova ao vivo).
 
 export const SCENE_TYPE_GUILD_BOSS = 11;
 export const SCENE_TYPE_GUILD_HALL = 10;
@@ -29,7 +37,12 @@ export const DEFAULT_GUILD_BOSS_SCENE = 5;
 export const LEAVE_TEAM_BODY = "callx XTeamDocument ReqTeamOp 7 -- i:3 q:0 n i:1 s: i:0 u:0";
 export const ENTER_BOSS_BODY = "calls XGuildDragonDocument ReqEnterScene 0";
 export const EXIT_REWARD_BODY = "callp XLevelRewardView _DlgHandler OnContinueClick 1";
-export const SAFE_ZONE_OPEN_BODY = "XSafeZoneDocument _isEffectSafeZoneActive";
+export const LEAVE_ARENA_BODY = "calls XGuildDragonDocument ReqQuitScene 0";
+export const NOTICE_TIME_BODY = "BattleMain NoticeTime";
+export const SCRIPT_COUNT_BODY = "XLevelScriptMgr CommandCount";
+export const SCRIPT_CMD_BODY = "XLevelScriptMgr _currentCmd cmd";
+// LevelCmd.Level_Cmd_Notice.
+export const LEVEL_CMD_NOTICE = 6;
 export const HUNT_ON_BODY = '{"on":1}';
 export const HUNT_OFF_BODY = '{"on":0}';
 
@@ -40,11 +53,14 @@ export const ENTER_MAX_TRIES = 6;
 export const MOVE_RETRY_MS = 2_000;
 // Margem pra dentro do raio: parar na borda deixa o char meio fora.
 export const SAFE_MARGIN = 1.5;
+// Fica no circulo ate esse tempo depois do ultimo aviso visto (a notice dura 4 s e
+// o golpe vem depois dela); passou, religa o auto-play e volta pro boss.
+export const DODGE_HOLD_MS = 10_000;
 
 export interface GuildBossConfig {
   enabled: boolean;
   goldBuffsMax: number; // ainda nao usado: o fluxo nao compra buff
-  dodgeSupreme: boolean; // corre pra safe zone quando o servidor abre
+  dodgeSupreme: boolean; // corre pra safe zone no aviso do golpe forte
   autoFight: boolean; // liga o auto-play dentro da arena
 }
 
@@ -70,7 +86,9 @@ export interface GuildBossSnapshot {
   sceneType: number;
   inBossScene: boolean;
   canFight: boolean; // evento aberto com o boss vivo
-  safeZoneOpen?: boolean; // undefined = nao lido (engine sem GETP de estatico)
+  noticeOn?: boolean; // notice da BattleMain na tela agora (undefined = nao lido)
+  scriptCount?: number; // XLevelScriptMgr CommandCount
+  scriptCmd?: number; // tipo do comando atual do script da arena
   zones: SafeZone[];
   pos?: [number, number, number];
   rewardVisible: boolean;
@@ -84,10 +102,35 @@ export interface GuildBossMemory {
   lastMoveAt: number;
   leftTeam: boolean;
   rewardTried: boolean;
+  leaveTried: boolean;
+  lastScriptCount: number; // -1 = ainda nao lido
+  dodgeUntil: number; // fica no circulo ate aqui
 }
 
 export function newGuildBossMemory(): GuildBossMemory {
-  return { enterTries: 0, lastEnterAt: -Infinity, lastMoveAt: -Infinity, leftTeam: false, rewardTried: false };
+  return {
+    enterTries: 0,
+    lastEnterAt: -Infinity,
+    lastMoveAt: -Infinity,
+    leftTeam: false,
+    rewardTried: false,
+    leaveTried: false,
+    lastScriptCount: -1,
+    dodgeUntil: -Infinity,
+  };
+}
+
+// Aviso do golpe forte: notice na tela ou um comando Notice novo no script da
+// arena. Cada aviso empurra o fim da espera no circulo.
+export function trackGuildBossWarning(m: GuildBossMemory, s: GuildBossSnapshot | null, now: number): GuildBossMemory {
+  if (!s?.inBossScene) return m;
+  const newNotice =
+    s.scriptCount !== undefined && m.lastScriptCount >= 0 && s.scriptCount !== m.lastScriptCount && s.scriptCmd === LEVEL_CMD_NOTICE;
+  return {
+    ...m,
+    lastScriptCount: s.scriptCount ?? m.lastScriptCount,
+    dodgeUntil: s.noticeOn === true || newNotice ? Math.max(m.dodgeUntil, now + DODGE_HOLD_MS) : m.dodgeUntil,
+  };
 }
 
 export type GuildBossStep =
@@ -126,20 +169,26 @@ export function nextGuildBossStep(s: GuildBossSnapshot | null, cfg: GuildBossCon
     if (s.rewardVisible && !m.rewardTried)
       return { kind: "act", id: "reward", name: "sair da arena do Guild Boss e receber recompensas", tag: "SKIL", body: EXIT_REWARD_BODY };
     if (s.dead) return { kind: "wait", reason: "char abatido na arena do Boss; aguardando..." };
+    // Evento fechado com o char ainda na arena (em 2026-11-18 ficou la depois do fim).
+    if (!s.canFight) {
+      if (!m.leaveTried)
+        return { kind: "act", id: "leave-arena", name: "evento fechado: saindo da arena", tag: "SKIL", body: LEAVE_ARENA_BODY };
+      return { kind: "wait", reason: "evento fechado; esperando sair da arena..." };
+    }
 
-    if (cfg.dodgeSupreme && s.safeZoneOpen === true) {
+    if (cfg.dodgeSupreme && now < m.dodgeUntil) {
       const near = nearestZone(s.pos, s.zones);
-      if (!near) return { kind: "wait", reason: "safe zone aberta, mas sem a posicao ou as zonas lidas" };
-      // Com o auto-play ligado a IA volta pro boss: desliga so enquanto a zona esta
-      // aberta (o golpe do boss e o perigo aqui) e religa assim que fecha.
+      if (!near) return { kind: "wait", reason: "aviso do boss, mas sem a posicao ou as zonas lidas" };
+      // Com o auto-play ligado a IA volta pro boss: desliga so durante o aviso e
+      // religa quando a espera acaba.
       if (s.autoPlay)
-        return { kind: "act", id: "hunt-off", name: "safe zone aberta: parando o auto-play pra correr pra ela", tag: "SKIL", body: HUNT_OFF_BODY };
+        return { kind: "act", id: "hunt-off", name: "aviso do boss: parando o auto-play pra correr pra safe zone", tag: "SKIL", body: HUNT_OFF_BODY };
       if (!near.inside) {
         if (now - m.lastMoveAt < MOVE_RETRY_MS) return { kind: "wait", reason: "correndo pra safe zone..." };
         const z = near.zone;
         return { kind: "move", name: `correndo pra safe zone (${z.x.toFixed(0)}, ${z.z.toFixed(0)})`, pos: [z.x, z.y, z.z] };
       }
-      return { kind: "wait", reason: "dentro da safe zone; esperando ela fechar" };
+      return { kind: "wait", reason: "dentro da safe zone; esperando o golpe do boss passar" };
     }
 
     if (cfg.autoFight && !s.autoPlay)
@@ -173,6 +222,7 @@ export function afterGuildBossStep(m: GuildBossMemory, step: GuildBossStep, now:
   if (step.id === "enter") return { ...m, enterTries: m.enterTries + 1, lastEnterAt: now };
   if (step.id === "leave-team") return { ...m, leftTeam: true };
   if (step.id === "reward") return { ...m, rewardTried: true };
+  if (step.id === "leave-arena") return { ...m, leaveTried: true };
   return m;
 }
 
@@ -189,6 +239,11 @@ const f32 = (i: number): number => {
 // Antes de parar o Treino o app pergunta isso.
 export async function guildBossOpenNow(q: EngineQuery): Promise<boolean> {
   if ((await q("GETP", "XGuildDragonDocument get_bCanFight")).bool === true) return true;
+  return inGuildBossArena(q);
+}
+
+// Char na arena do Guild Boss (o Treino nao religa aqui dentro).
+export async function inGuildBossArena(q: EngineQuery): Promise<boolean> {
   return num(await q("GETP", "XScene get_SceneType")) === SCENE_TYPE_GUILD_BOSS;
 }
 
@@ -224,10 +279,14 @@ export async function readGuildBossSnapshot(q: EngineQuery, zones: SafeZone[]): 
   const inBossScene = isBossScene(sceneType, sceneId, bossScene);
   const c = player.corrected;
   const pos = Array.isArray(c) && c.length === 3 && c.every((x) => typeof x === "number") ? (c as [number, number, number]) : undefined;
-  let safeZoneOpen: boolean | undefined;
+  let noticeOn: boolean | undefined;
+  let scriptCount: number | undefined;
+  let scriptCmd: number | undefined;
   if (inBossScene) {
-    const r = await q("GETP", SAFE_ZONE_OPEN_BODY);
-    if (r.ok === true && r.static === true) safeZoneOpen = r.bool === true;
+    const nt = await q("GETP", NOTICE_TIME_BODY);
+    if (nt.ok === true && typeof nt.int === "number") noticeOn = nt.int !== 0;
+    scriptCount = num(await q("GETP", SCRIPT_COUNT_BODY));
+    scriptCmd = num(await q("GETP", SCRIPT_CMD_BODY));
   }
   return {
     inWorld: player.ok === true,
@@ -237,7 +296,9 @@ export async function readGuildBossSnapshot(q: EngineQuery, zones: SafeZone[]): 
     sceneType,
     inBossScene,
     canFight: await bool("XGuildDragonDocument get_bCanFight"),
-    safeZoneOpen,
+    noticeOn,
+    scriptCount,
+    scriptCmd,
     zones,
     pos,
     rewardVisible: inBossScene && (num(await q("GETP", "XLevelRewardView _DlgHandler")) ?? 0) !== 0,
