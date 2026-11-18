@@ -24,7 +24,7 @@
   "devDependencies": {
     "@tailwindcss/cli": "4.3.5",
     "@types/node": "24.19.2",
-    "electron": "45.2.3",
+    "electron": "45.3.2",
     "electron-builder": "26.18.0",
     "esbuild": "0.28.2",
     "tailwindcss": "4.3.5",
@@ -88,6 +88,6 @@
   },
   "dependencies": {
     "electron-updater": "6.8.11",
-    "sql.js": "1.15.2"
+    "sql.js": "1.16.0"
   }
 }
