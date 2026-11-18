@@ -121,6 +121,7 @@ declare global {
       runGuildBoss: (cfg: GuildBossUiConfig) => Promise<{ ok: boolean; erro?: string }>;
       stopGuildBoss: () => Promise<void>;
       guildBossOpen: () => Promise<boolean>;
+      guildBossInArena: () => Promise<boolean>;
       previewCardAlbum: (cfg: CardAlbumUiConfig) => Promise<{
         ok: boolean;
         erro?: string;
@@ -991,6 +992,22 @@ async function maybeRunCardAlbum(): Promise<void> {
 
 let gbBusy = false;
 let gbLastRunAt = 0;
+// O Guild Boss parou o Treino e ainda falta religar.
+let gbResumeTrain = false;
+
+// Religa o Treino so com o char fora da arena: em 2026-11-18 o Treino voltou la
+// dentro, tirou o char do circulo e ele morreu no golpe do boss a cada 30 s. Ainda
+// na arena, a proxima passada do Guild Boss (a cada minuto) cuida e sai dela.
+async function resumeTrainAfterGuildBoss(): Promise<void> {
+  if (!gbResumeTrain) return;
+  if (await window.sro.guildBossInArena().catch(() => false)) {
+    log("Guild Boss: o char ainda esta na arena; o Treino volta depois que ele sair.");
+    return;
+  }
+  gbResumeTrain = false;
+  if (polling && isChecked("act-train")) resumeTrainLater("do Guild Boss");
+}
+
 async function maybeRunGuildBoss(): Promise<void> {
   if (!polling || !isChecked("act-guildboss") || gbBusy || activitiesRunning || contBusy || watchdogBusy || loggingIn || outOfWorldSince !== 0) return;
   if (Date.now() - gbLastRunAt < 60 * 1000) return;
@@ -1002,15 +1019,13 @@ async function maybeRunGuildBoss(): Promise<void> {
       setGbStatus("aguardando abertura", "bg-ink-600 text-muted");
       return;
     }
-    const wasTraining = trainRunning;
-    if (wasTraining) {
+    if (trainRunning) {
       if (!(await stopTrainLoop())) return;
+      gbResumeTrain = true;
     }
     const ok = await runGuildBossActivity();
     if (ok) markDone("act-guildboss");
-    if (wasTraining && polling && isChecked("act-train")) {
-      resumeTrainLater("do Guild Boss");
-    }
+    await resumeTrainAfterGuildBoss();
   } finally {
     gbBusy = false;
   }
@@ -2047,13 +2062,21 @@ async function onActivityToggle(id: string): Promise<void> {
     }
   } else if (id === "act-guildboss" && on) {
     if (!(await waitInWorld())) return;
+    // Um loop so: em 2026-11-18 dois rodaram juntos e disputaram o auto-play.
+    if (gbBusy) return;
     if (!(await window.sro.guildBossOpen().catch(() => false))) {
       log("Guild Boss fechado agora: o bot entra sozinho quando abrir (20:00 do servidor).");
       setGbStatus("aguardando abertura", "bg-ink-600 text-muted");
     } else {
-      if (trainRunning) await stopTrainLoop();
-      if (polling && (await runGuildBossActivity())) markDone("act-guildboss");
-      if (polling && isChecked("act-train")) resumeTrainLater("do Guild Boss");
+      gbBusy = true;
+      try {
+        if (trainRunning && (await stopTrainLoop())) gbResumeTrain = true;
+        if (polling && (await runGuildBossActivity())) markDone("act-guildboss");
+        if (isChecked("act-train")) gbResumeTrain = true;
+        await resumeTrainAfterGuildBoss();
+      } finally {
+        gbBusy = false;
+      }
     }
   } else if (id === "act-cont" && on) {
     if (await waitInWorld()) {

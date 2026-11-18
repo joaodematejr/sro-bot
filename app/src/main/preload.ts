@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("sro", {
     ipcRenderer.invoke("engine:guildboss", cfg),
   stopGuildBoss: () => ipcRenderer.invoke("engine:guildbossstop"),
   guildBossOpen: () => ipcRenderer.invoke("engine:guildbossopen"),
+  guildBossInArena: () => ipcRenderer.invoke("engine:guildbossarena"),
   chat: (key: string, sinceId: number) => ipcRenderer.invoke("engine:chat", key, sinceId),
   chatSend: (key: string, text: string, to?: string) => ipcRenderer.invoke("engine:chatsend", key, text, to),
   inject: () => ipcRenderer.invoke("engine:inject"),

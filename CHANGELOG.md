@@ -4,6 +4,9 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** **Guild Boss**: a fuga pra safe zone agora segue o aviso do golpe forte (a notice "<boss> is going to destroy the place, quickly find a safezone" do script da arena, lida no `BattleMain NoticeTime` e no `XLevelScriptMgr`). A 0.151.0 seguia o `_isEffectSafeZoneActive`, que em 2026-11-18 ficou ligado a luta inteira: o char ia pro circulo e ficava la sem atacar (dentro dele o jogo bloqueia as skills). Agora, no aviso, para o auto-play, corre pro circulo mais perto, fica ate 10 s depois do aviso sumir e religa o auto-play pra voltar pro boss.
+- **App:** Guild Boss: com o evento fechado e o char ainda na arena, sai dela (`XGuildDragonDocument ReqQuitScene`). O Treino so religa com o char fora da arena: em 2026-11-18 ele voltou la dentro, tirou o char do circulo e o char morreu a cada 30 s ate o fim. Uma leitura falha da cena nao encerra mais a luta (precisa de 2 seguidas fora da arena), e marcar o Guild Boss com ele ja rodando nao abre um segundo loop.
+
 ## [0.151.0] - 2026-11-16
 
 - **App:** Treino: o limite de mortes soma as mortes do Treino no dia, entre as rodadas. O Treino recomeca depois de cada evento e a conta zerava, entao com limite 1 o char podia morrer uma vez por rodada. Agora zera na virada do dia do jogo ou quando o usuario liga o Treino na mao.
