@@ -39,6 +39,7 @@ import {
   readOptions,
   readSupply,
   readTrainSnapshot,
+  readReviveState,
   RESET_GAP_MS,
   setOptionBody,
   SPOT_LEAVE_M,
@@ -561,6 +562,8 @@ export async function runTrain(
       await q("SKIL", DEVIL_CLICK);
     }
     if (s) Object.assign(s, extra);
+    // Morto com o pergaminho ligado: le a mochila e a perda de EXP desta morte.
+    if (s?.dead && cfg.reviveScroll) Object.assign(s, await readReviveState(q));
     if (s) prog = trackTrain(prog, s, now, cfg);
     if (!prog.stopReason && prog.pauseReason !== pauseRequested) prog = { ...prog, pauseReason: pauseRequested };
     // A area so vale no ponto: viajando, ela lia os monstros da cidade de saida.

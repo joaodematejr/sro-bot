@@ -1266,6 +1266,7 @@ interface TrainUiConfig {
   autoSkills?: boolean;
   sellJunk?: boolean;
   avoidPlayers?: boolean;
+  reviveScroll?: boolean;
 }
 
 // Pontos e cidade nao tem campo proprio: ficam aqui e no localStorage.
@@ -1318,6 +1319,7 @@ function readTrainUi(): TrainUiConfig {
     autoSkills: checked("tr-skills"),
     sellJunk: checked("tr-sell"),
     avoidPlayers: checked("tr-players"),
+    reviveScroll: checked("tr-revive-scroll"),
   };
 }
 
@@ -1420,6 +1422,7 @@ function applyTrainUi(c: TrainUiConfig): void {
   ($("tr-skills") as HTMLInputElement).checked = !!c.autoSkills;
   ($("tr-sell") as HTMLInputElement).checked = !!c.sellJunk;
   ($("tr-players") as HTMLInputElement).checked = c.avoidPlayers !== false;
+  ($("tr-revive-scroll") as HTMLInputElement).checked = !!c.reviveScroll;
   showTrainSpots();
 }
 
@@ -2891,7 +2894,7 @@ function wire(): void {
   applyTrainUi(loadTrainConfig());
   for (const id of ["tr-deaths", "tr-potions", "tr-sw-few", "tr-sw-min", "tr-sw-radius", "tr-sw-deaths-on", "tr-sw-deaths",
     "tr-stop-level-on", "tr-stop-level", "tr-stop-exp", "tr-stop-gold-on", "tr-stop-gold", "tr-home-on", "tr-team-on", "tr-team-same", "tr-team-lead", "tr-team-auto", "tr-team-req", "tr-team-invite", "tr-team-accept",
-    "tr-team-accept-fg", "tr-team-follow", "tr-sw-hp-on", "tr-sw-hp", "tr-booster", "tr-buff-dano", "tr-buff-vip", "tr-berserk", "tr-devil", "tr-skills", "tr-sell", "tr-players"])
+    "tr-team-accept-fg", "tr-team-follow", "tr-sw-hp-on", "tr-sw-hp", "tr-booster", "tr-buff-dano", "tr-buff-vip", "tr-berserk", "tr-devil", "tr-skills", "tr-sell", "tr-players", "tr-revive-scroll"])
     $(id).addEventListener("change", saveTrainConfig);
   // Entrar num time aberto e criar um time sao um ou outro.
   $("tr-team-on").addEventListener("change", () => {

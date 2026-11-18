@@ -343,7 +343,7 @@ documentos nao tem singleton: o engine acha em `XDocuments.internalIterator`
 | ReviveTime | 4017 | s (15) |
 | RangeFind | 4018 | indice de 20/50/100/200 m (3 = 200 m) |
 | PriorTarget | 4020 | 0 Normal, 1 Monster, 2 Player |
-| RevivePlace | 4022 | `KKSG.ReviveType`: 1 OnTheSpot (custa item 900), 2 BackCity |
+| RevivePlace | 4022 | 0 no local (custa item 900), qualquer outro valor na cidade (`SetupAutoRevive`) |
 | HpHealItem1/2, MpHealItem1/2 | 4034..4037 | itemID da pocao (0 = espaco vazio) |
 | ReturnFarming | 4039 | 0/1 (voltar a cacar no ponto depois de reviver) |
 | HealHp/MpSkillThreshold | 4041 / 4042 | % (60) |
@@ -357,6 +357,17 @@ documentos nao tem singleton: o engine acha em `XDocuments.internalIterator`
 - `XReviveDocument`: `get_NormalCostID` 900 x1 (reviver no local),
   `get_SpecialCostID` 7 x3 (pode ser moeda paga: nunca). `ReviveDlg`:
   `OnBtnBackCityClicked` (gratis), `OnBtnOnTheSpotClicked`, `OnCostReviveClicked` (pago).
+- Pergaminho (lido no codigo e ao vivo em 2026-11-18, so leitura): item 900 =
+  "Resurrection scroll" (`Localization Localize:"ItemList_ItemName_900"`), o
+  `NormalCostID` do reviver no local. O botao no local tem o selo `FreeExp`: nao
+  tira EXP. Na cidade tira `XReviveDocument get_NormalExpPenalty` (vem no
+  `DeathInfo.expDecrease`; no char principal Lv.87 era 59.713.741). O
+  `SetupAutoRevive` do auto-play com RevivePlace 0 so revive no local se for
+  novato, VIP com revive do Premium sobrando (`GetPayMemberReviveCount` 2) ou com o
+  item 900 na mochila; sem nada disso abre `ShowBuyReviveItem` (compra com o item 7,
+  so manda `ReviveMoney` no OK) e revive na cidade em 300 s. Por isso o Treino deixa
+  RevivePlace na cidade e manda ele mesmo `callsi XReviveDocument SendReviveRpc 1 1`
+  (ReviveOnTheSpot) quando ha pergaminho. `ReviveTime` 4017 do char principal: 60 s.
 - Cena: `XScene get_SceneID` (100001 = Jangan). Ponto de treino = cena + CONN
   `corrected`; voltar = `MOVE x y z` (Navigate, mesma cena).
 - **Morte provada ao vivo (2026-11-07, char de teste Lv.60 no Lunar, Roc Mountain cena

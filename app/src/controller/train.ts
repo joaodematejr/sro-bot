@@ -19,8 +19,13 @@
 //               get_Attributes get_Level. Visto no Grassland de Jangan: Mangyang
 //               nivel 1 pro char 60, EXP 0 em 4 min de caca.
 //   Morte    -> CONN dead; reserva: ReviveDlg.OnBtnBackCityClicked (gratis).
-//               Reviver no local custa item (900) e o "especial" custa 3 do item 7:
-//               o bot so revive na cidade.
+//               Reviver na cidade tira EXP (XReviveDocument NormalExpPenalty: 59,7 M
+//               no char principal Lv.87). Reviver no local gasta 1 Resurrection
+//               scroll (item 900, NormalCostID) e nao tira EXP (o botao tem o selo
+//               FreeExp). Com a opcao reviveScroll e pergaminho na mochila o bot
+//               manda o XReviveDocument SendReviveRpc(ReviveOnTheSpot), o mesmo
+//               do botao. Nunca o ReviveMoney (custa o item 7) nem o
+//               ShowBuyReviveItem (compra o pergaminho).
 
 import type { EngineQuery } from "./tower";
 
@@ -38,8 +43,13 @@ export const OPT = {
   ReturnFarming: 4039,
 } as const;
 
-// RevivePlace guarda o KKSG.ReviveType: 1 OnTheSpot (custa item), 2 BackCity.
+// RevivePlace: o XAutoPlayDocument SetupAutoRevive trata 0 como no local e
+// qualquer outro valor como na cidade. Fica sempre na cidade: no local sem
+// pergaminho o jogo abre a compra (ShowBuyReviveItem) e espera 5 min morto. O
+// pergaminho e usado pelo proprio bot (REVIVE_SPOT_BODY), so quando ha um na mochila.
 export const REVIVE_BACK_CITY = 2;
+export const REVIVE_SCROLL_ITEM = 900;
+export const REVIVE_SPOT_BODY = "callsi XReviveDocument SendReviveRpc 1 1";
 
 // Opcoes que o treino liga. RevivePlace na cidade: reviver no local custa item.
 export const TRAIN_OPTIONS: { id: number; name: string; value: number }[] = [
@@ -90,6 +100,7 @@ export interface TrainConfig {
   autoSkills?: boolean; // no level-up, sobe as maestrias usadas e as skills liberadas
   sellJunk?: boolean; // mochila com menos de 15 livres: vende a lista fixa de lixo
   avoidPlayers?: boolean; // outro jogador cacando perto por 2 min: troca de canal ou de ponto (ligado se ausente)
+  reviveScroll?: boolean; // morto: revive no local com o Resurrection scroll da mochila (nao perde EXP)
 }
 
 export const DEFAULT_TRAIN_CONFIG: TrainConfig = { deathLimit: 0, setupPotions: true };
@@ -154,6 +165,9 @@ export const PRIMARY_RETURN_MAX_MS = 4 * 60 * 60 * 1000;
 export const RESET_GAP_MS = 1500;
 // Morto alem disso: o AutoRevive nao agiu, revive na cidade pelo botao.
 export const DEAD_FALLBACK_MS = 45000;
+// Com o pergaminho: espera a morte chegar do servidor (DeathInfo traz a perda de
+// EXP) antes de reviver no local. Depois do DEAD_FALLBACK_MS vale a cidade.
+export const SCROLL_REVIVE_DELAY_MS = 2000;
 // Parar a caca pra ir pra cidade (pausa do Continental, meta, limite) so com o
 // char inteiro e sem monstro colado. Em 2026-11-08 09:49 a pausa do Continental
 // desligou a caca logo depois de um combate, com HP em 48% no meio do Niya
@@ -288,6 +302,8 @@ export interface TrainSnapshot {
   enemiesNear?: number; // monstros no raio da regra de troca (lido de tempos em tempos)
   enemiesClose?: number; // monstros a LEAVE_SAFE_RADIUS_M do char (lido so antes de ir pra cidade)
   following?: boolean; // seguindo o lider do time (Follow do jogo): sem ponto, o lider leva
+  reviveScrolls?: number; // Resurrection scroll na mochila (lido so morto, com reviveScroll)
+  expPenalty?: number; // EXP que reviver na cidade tira nesta morte (idem)
 }
 
 // O que impede desligar a caca pra ir pra cidade agora (null = pode). Texto sem
@@ -403,7 +419,7 @@ export type TrainStep =
   | { kind: "done"; reason: string }
   | { kind: "act"; id: TrainAction; name: string; tag: string; body: string };
 
-export type TrainAction = "hunt" | "reset" | "revive" | "leave" | "move" | "arrive" | "travel" | "channel" | "next" | "home" | "defend" | "primary" | "safe" | "dodge";
+export type TrainAction = "hunt" | "reset" | "revive" | "revive-spot" | "leave" | "move" | "arrive" | "travel" | "channel" | "next" | "home" | "defend" | "primary" | "safe" | "dodge";
 
 export const HUNT_ON = JSON.stringify({ on: 1 });
 // Sem alvo, o auto-play volta a vagar em volta do `_born_pos` da IA (raio de 20 m),
@@ -564,14 +580,35 @@ export function dodgePlan(s: TrainSnapshot, cfg: TrainConfig, p: TrainProgress, 
   return spots.length > 1 ? "next" : null;
 }
 
+// Reviver no local agora: opcao ligada, pergaminho na mochila, morte com perda de
+// EXP (0 lido = nada a salvar) e ainda antes da reserva na cidade.
+export function scrollReviveDue(s: TrainSnapshot, cfg: TrainConfig, p: TrainProgress, now: number): boolean {
+  if (!cfg.reviveScroll || !s.dead || p.deadSince === null) return false;
+  if (!s.reviveScrolls || s.reviveScrolls <= 0 || s.expPenalty === 0) return false;
+  const deadFor = now - p.deadSince;
+  return deadFor >= SCROLL_REVIVE_DELAY_MS && deadFor < DEAD_FALLBACK_MS && now - p.reviveSentAt >= REVIVE_COOLDOWN_MS;
+}
+
+function fmtExp(v: number | undefined): string {
+  if (!v || v <= 0) return "";
+  return v >= 1e6 ? `${(v / 1e6).toFixed(1).replace(".", ",")} M de ` : `${Math.round(v / 1e3)} mil de `;
+}
+
 export function nextTrainStep(s: TrainSnapshot | null, cfg: TrainConfig, p: TrainProgress, now: number): TrainStep {
   if (!s) return { kind: "wait", reason: "engine fora" };
   if (s.dead) {
+    if (scrollReviveDue(s, cfg, p, now))
+      return {
+        kind: "act", id: "revive-spot", tag: "SKIL", body: REVIVE_SPOT_BODY,
+        name: `reviver no local com Resurrection scroll (${s.reviveScrolls} na mochila; nao perde ${fmtExp(s.expPenalty)}EXP)`,
+      };
     if (p.deadSince !== null && now - p.deadSince >= DEAD_FALLBACK_MS && now - p.reviveSentAt >= REVIVE_COOLDOWN_MS)
       return { kind: "act", id: "revive", name: "reviver na cidade", tag: "SKIL", body: "callsn ReviveDlg OnBtnBackCityClicked 1" };
     if (p.stopReason) return { kind: "done", reason: p.pauseReason ? `${p.stopReason} (${DIED_BEFORE_HOME})` : p.stopReason };
     const r = p.pauseReason ?? stopReason(s, cfg, p);
     if (r && !cfg.home) return { kind: "done", reason: r };
+    if (cfg.reviveScroll && s.reviveScrolls === 0) return { kind: "wait", reason: "morto e sem Resurrection scroll na mochila: esperando reviver na cidade" };
+    if (cfg.reviveScroll && s.expPenalty === 0) return { kind: "wait", reason: "morto sem perda de EXP: revive na cidade sem gastar pergaminho" };
     return { kind: "wait", reason: "morto, esperando reviver" };
   }
   if (!s.inWorld) return { kind: "wait", reason: "fora de mundo" };
@@ -849,6 +886,16 @@ export async function readTrainSnapshot(q: EngineQuery): Promise<TrainSnapshot |
     if (sc.ok === true && typeof sc.int === "number") s.scene = sc.int;
   }
   return s;
+}
+
+// Morto com reviveScroll: pergaminhos na mochila e a perda de EXP desta morte.
+export async function readReviveState(q: EngineQuery): Promise<{ reviveScrolls?: number; expPenalty?: number }> {
+  const n = await q("GETP", `XBagDocument GetItemCount:${REVIVE_SCROLL_ITEM},0`);
+  const e = await q("GETP", "XReviveDocument get_NormalExpPenalty");
+  return {
+    reviveScrolls: n.ok === true && typeof n.int === "number" ? n.int : undefined,
+    expPenalty: e.ok === true && typeof e.int === "number" ? e.int : undefined,
+  };
 }
 
 // Gold (item virtual 1).
