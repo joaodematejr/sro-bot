@@ -992,6 +992,9 @@ async function maybeRunCardAlbum(): Promise<void> {
 
 let gbBusy = false;
 let gbLastRunAt = 0;
+// Checagem do Guild Boss num timer proprio (so le o bCanFight e a cena).
+const GB_CHECK_MS = 15 * 1000;
+let gbWarnedTrain = false;
 // O Guild Boss parou o Treino e ainda falta religar.
 let gbResumeTrain = false;
 
@@ -1008,23 +1011,52 @@ async function resumeTrainAfterGuildBoss(): Promise<void> {
   if (polling && isChecked("act-train")) resumeTrainLater("do Guild Boss");
 }
 
+// Passada de 1 min: cada atividade roda mesmo se a anterior falhar (antes um erro
+// numa delas pulava o resto da fila).
+async function runScheduled(): Promise<void> {
+  const steps: [string, () => Promise<void>][] = [
+    ["diarias", maybeRunDailies],
+    ["Continental", maybeRunContinental],
+    ["baus do Continental", maybeRunChests],
+    ["baus de atividade", maybeRunActChests],
+    ["gratis do dia", maybeRunFreebies],
+    ["Album de Cards", maybeRunCardAlbum],
+    ["Qigong", maybeRequestQigong],
+  ];
+  for (const [name, fn] of steps) {
+    try {
+      await fn();
+    } catch (e) {
+      log(`agendador: ${name} falhou: ${String(e)}`);
+    }
+  }
+}
+
 async function maybeRunGuildBoss(): Promise<void> {
   if (!polling || !isChecked("act-guildboss") || gbBusy || activitiesRunning || contBusy || watchdogBusy || loggingIn || outOfWorldSince !== 0) return;
-  if (Date.now() - gbLastRunAt < 60 * 1000) return;
+  if (Date.now() - gbLastRunAt < GB_CHECK_MS) return;
   gbLastRunAt = Date.now();
   gbBusy = true;
   try {
     // Fechado (quase o dia todo): nao para o Treino nem mexe na party.
     if (!(await window.sro.guildBossOpen().catch(() => false))) {
       setGbStatus("aguardando abertura", "bg-ink-600 text-muted");
+      gbWarnedTrain = false;
       return;
     }
     if (trainRunning) {
-      if (!(await stopTrainLoop())) return;
+      if (!(await stopTrainLoop())) {
+        if (!gbWarnedTrain) log("Guild Boss aberto, mas o loop do Treino nao parou a tempo; tento de novo em seguida.");
+        gbWarnedTrain = true;
+        return;
+      }
       gbResumeTrain = true;
     }
+    log("Guild Boss aberto: entrando.");
     const ok = await runGuildBossActivity();
     if (ok) markDone("act-guildboss");
+    // Falhou (Guild Hall, entrada recusada): proxima tentativa em 1 min, nao em 15 s.
+    else gbLastRunAt = Date.now() + 60 * 1000 - GB_CHECK_MS;
     await resumeTrainAfterGuildBoss();
   } finally {
     gbBusy = false;
@@ -1162,7 +1194,9 @@ let qigongNextAt = 0;
 // Nem pede nem aceita com Tower, Guild, Firm ou Continental rodando: aceito, o jogo
 // leva o char pra area segura no meio da viagem do Firm (em 2026-11-09 18:01 os
 // pedidos sairam junto com ela).
-const qigongBlocked = () => dailyBusy || contBusy;
+// Com o Guild Boss rodando o Qigong nao entra: ele leva o char pro Guild Hall, e de
+// la o jogo nao deixa entrar na arena.
+const qigongBlocked = () => dailyBusy || contBusy || gbBusy;
 
 // Aceitar: o convite se recusa sozinho em 15 s, entao confere a cada 4 s. Na mesma
 // batida, a rede de seguranca do Guild Hall (char parado la depois de um Qigong).
@@ -2952,7 +2986,10 @@ function wire(): void {
   showContNext();
   $("act-cont").addEventListener("change", showContNext);
   window.setInterval(showContNext, 60 * 1000);
-  window.setInterval(() => void maybeRunDailies().then(() => maybeRunContinental()).then(() => maybeRunChests()).then(() => maybeRunActChests()).then(() => maybeRunFreebies()).then(() => maybeRunCardAlbum()).then(() => maybeRunGuildBoss()).then(() => maybeRequestQigong()), 60 * 1000);
+  window.setInterval(() => void runScheduled(), 60 * 1000);
+  // Guild Boss fora da fila: em 2026-11-18 ele nao entrou sozinho as 12:00 UTC,
+  // quando a janela dos envelopes da guilda segura o Gratis do dia na fila.
+  window.setInterval(() => void maybeRunGuildBoss().catch((e) => log(`Guild Boss: checagem falhou: ${String(e)}`)), GB_CHECK_MS);
   // Mochila: confere a cada 2 min com o bot rodando e o char em mundo.
   window.setInterval(() => {
     if (polling && !watchdogBusy && !loggingIn && outOfWorldSince === 0) void checkBag().catch(() => undefined);
