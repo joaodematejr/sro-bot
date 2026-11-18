@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** Treino: nova opcao **reviver no local com Resurrection scroll** (desligada por padrao). Morto, com pergaminho na mochila e perda de EXP na morte, o bot revive no lugar em 2 s pelo `XReviveDocument SendReviveRpc(ReviveOnTheSpot)`, o mesmo do botao, e nao perde EXP: reviver na cidade tirava 59,7 M do char principal Lv.87. Gasta 1 pergaminho por morte. Sem pergaminho, sem perda de EXP ou sem sucesso ate 45 s, revive na cidade como antes. O RevivePlace do auto-play continua na cidade: no local sem pergaminho o jogo abria a compra com Diamond e deixava o char 5 min morto. Como testar: marcar a opcao no Treino; na proxima morte o log mostra "reviver no local com Resurrection scroll (N na mochila; nao perde X de EXP)" e o char volta a cacar no mesmo lugar, com um pergaminho a menos. Sem prova ao vivo (precisa de uma morte).
+
 ## [0.152.0] - 2026-11-18
 
 - **App:** **Guild Boss**: a fuga pra safe zone agora segue o aviso do golpe forte (a notice "<boss> is going to destroy the place, quickly find a safezone" do script da arena, lida no `BattleMain NoticeTime` e no `XLevelScriptMgr`). A 0.151.0 seguia o `_isEffectSafeZoneActive`, que em 2026-11-18 ficou ligado a luta inteira: o char ia pro circulo e ficava la sem atacar (dentro dele o jogo bloqueia as skills). Agora, no aviso, para o auto-play, corre pro circulo mais perto, fica ate 10 s depois do aviso sumir e religa o auto-play pra voltar pro boss.

@@ -28,6 +28,8 @@ import {
   pickPotion,
   RESET_BORN_BODY,
   REVIVE_BACK_CITY,
+  REVIVE_SPOT_BODY,
+  SCROLL_REVIVE_DELAY_MS,
   SPOT_ARRIVE_M,
   LEAVE_AFTER_MS,
   STUCK_LEAVE_MS,
@@ -104,6 +106,35 @@ test("vigia: morte conta uma vez, revive na cidade se o jogo nao reviver, para n
   // Revivido: o tempo morto nao conta como caca parada.
   const r = trackTrain(p, alive(100), 70000 + IDLE_MS);
   assert.equal(nextTrainStep(alive(100), DEFAULT_TRAIN_CONFIG, r, 70000 + IDLE_MS).kind, "wait");
+});
+
+test("pergaminho: morto revive no local com scroll e perda de EXP; sem scroll ou sem perda espera a cidade", () => {
+  const T = 100000; // relogio real: a recarga do revive conta desde 0
+  const cfg = { ...DEFAULT_TRAIN_CONFIG, reviveScroll: true };
+  // Valores do char principal em 2026-11-18: 8 pergaminhos, perda de 59,7 M.
+  const d = (n: number | undefined, pen: number | undefined): TrainSnapshot => ({ ...dead(100), reviveScrolls: n, expPenalty: pen });
+  let p = trackTrain(newTrainProgress(0), alive(100), T);
+  p = trackTrain(p, d(8, 59713741), T + 1000);
+  // Logo na morte espera o DeathInfo chegar.
+  assert.equal(nextTrainStep(d(8, 59713741), cfg, p, T + 1000).kind, "wait");
+  const st = nextTrainStep(d(8, 59713741), cfg, p, T + 1000 + SCROLL_REVIVE_DELAY_MS);
+  assert.equal(st.kind === "act" && st.id, "revive-spot");
+  assert.equal(st.kind === "act" && st.body, REVIVE_SPOT_BODY);
+  assert.match(st.kind === "act" ? st.name : "", /8 na mochila; nao perde 59,7 M de EXP/);
+  // Mandou: espera a recarga antes de mandar de novo.
+  const sent = afterTrainAction(p, "revive-spot", T + 1000 + SCROLL_REVIVE_DELAY_MS);
+  assert.equal(nextTrainStep(d(8, 59713741), cfg, sent, T + 1000 + SCROLL_REVIVE_DELAY_MS + 3000).kind, "wait");
+  // Opcao desligada, sem pergaminho ou sem perda: nunca o local; a reserva segue a cidade.
+  for (const [c, s] of [[DEFAULT_TRAIN_CONFIG, d(8, 59713741)], [cfg, d(0, 59713741)], [cfg, d(undefined, 59713741)], [cfg, d(8, 0)]] as const) {
+    assert.equal(nextTrainStep(s, c, p, T + 1000 + SCROLL_REVIVE_DELAY_MS).kind, "wait");
+    const late = nextTrainStep(s, c, p, T + 1000 + DEAD_FALLBACK_MS);
+    assert.equal(late.kind === "act" && late.body, "callsn ReviveDlg OnBtnBackCityClicked 1");
+  }
+  // Perda nao lida (undefined) ainda usa o pergaminho.
+  assert.equal(nextTrainStep(d(8, undefined), cfg, p, T + 1000 + SCROLL_REVIVE_DELAY_MS).kind, "act");
+  // O local nao deu certo ate a reserva: vai pra cidade.
+  const st2 = nextTrainStep(d(8, 59713741), cfg, p, T + 1000 + DEAD_FALLBACK_MS);
+  assert.equal(st2.kind === "act" && st2.id, "revive");
 });
 
 test("ponto: longe para a caca, anda, chega e religa; outra cena nao anda", () => {
