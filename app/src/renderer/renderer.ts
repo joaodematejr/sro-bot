@@ -122,6 +122,10 @@ declare global {
       stopGuildBoss: () => Promise<void>;
       guildBossOpen: () => Promise<boolean>;
       guildBossInArena: () => Promise<boolean>;
+      runSekhmet: (cfg: SekhmetUiConfig) => Promise<{ ok: boolean; erro?: string }>;
+      stopSekhmet: () => Promise<void>;
+      sekhmetOpen: () => Promise<boolean>;
+      sekhmetInArena: () => Promise<boolean>;
       previewCardAlbum: (cfg: CardAlbumUiConfig) => Promise<{
         ok: boolean;
         erro?: string;
@@ -840,6 +844,64 @@ async function runGuildBossActivityInner(): Promise<boolean> {
   return r.ok;
 }
 
+// ---- Sekhmet War (World Boss) ----
+
+interface SekhmetUiConfig {
+  buffs: number;
+  autoFight: boolean;
+}
+
+function readSekhmetUi(): SekhmetUiConfig {
+  return { buffs: Number(($("sw-buffs") as HTMLSelectElement)?.value ?? "0") || 0, autoFight: true };
+}
+
+function saveSekhmetConfig(): void {
+  try {
+    localStorage.setItem("sekhmetConfig", JSON.stringify(readSekhmetUi()));
+  } catch {
+    /* ignora */
+  }
+}
+
+function loadSekhmetConfig(): void {
+  try {
+    const raw = localStorage.getItem("sekhmetConfig");
+    if (!raw) return;
+    const c = JSON.parse(raw) as Partial<SekhmetUiConfig>;
+    const sel = $("sw-buffs") as HTMLSelectElement;
+    if (sel && typeof c.buffs === "number") sel.value = String(c.buffs);
+  } catch {
+    /* ignora */
+  }
+}
+
+function setSwStatus(text: string, cls: string): void {
+  const el = $("sw-status");
+  if (el) {
+    el.textContent = text;
+    el.className = "pill " + cls;
+  }
+}
+
+async function runSekhmetActivityInner(): Promise<boolean> {
+  log("atividade Sekhmet War ativa: rodando...");
+  setSwStatus("rodando", "bg-ink-600 text-warn");
+  const r = await window.sro.runSekhmet(readSekhmetUi());
+  if (r.ok) {
+    setSwStatus("concluido", "bg-ink-600 text-ok");
+    log("Sekhmet War concluida.");
+  } else if (r.erro === "fechado") {
+    setSwStatus("aguardando abertura", "bg-ink-600 text-muted");
+  } else if (r.erro === "parado") {
+    setSwStatus("parado", "bg-ink-600 text-muted");
+    log("Sekhmet War parada.");
+  } else {
+    setSwStatus("falhou", "bg-ink-600 text-danger");
+    log("Sekhmet War falhou: " + (r.erro ?? "erro"));
+  }
+  return r.ok;
+}
+
 // ---- Album de Cards ----
 
 interface CardSurplusUi {
@@ -1033,7 +1095,7 @@ async function runScheduled(): Promise<void> {
 }
 
 async function maybeRunGuildBoss(): Promise<void> {
-  if (!polling || !isChecked("act-guildboss") || gbBusy || activitiesRunning || contBusy || watchdogBusy || loggingIn || outOfWorldSince !== 0) return;
+  if (!polling || !isChecked("act-guildboss") || gbBusy || swBusy || activitiesRunning || contBusy || watchdogBusy || loggingIn || outOfWorldSince !== 0) return;
   if (Date.now() - gbLastRunAt < GB_CHECK_MS) return;
   gbLastRunAt = Date.now();
   gbBusy = true;
@@ -1060,6 +1122,57 @@ async function maybeRunGuildBoss(): Promise<void> {
     await resumeTrainAfterGuildBoss();
   } finally {
     gbBusy = false;
+  }
+}
+
+let swBusy = false;
+let swLastRunAt = 0;
+let swWarnedTrain = false;
+// A Sekhmet War parou o Treino e ainda falta religar.
+let swResumeTrain = false;
+
+// Como no Guild Boss: o Treino so volta com o char fora da arena.
+async function resumeTrainAfterSekhmet(): Promise<void> {
+  if (!swResumeTrain) return;
+  if (await window.sro.sekhmetInArena().catch(() => false)) {
+    log("Sekhmet War: o char ainda esta na arena; o Treino volta depois que ele sair.");
+    return;
+  }
+  swResumeTrain = false;
+  if (polling && isChecked("act-train")) resumeTrainLater("da Sekhmet War");
+}
+
+// Uma vez por dia do jogo: o evento fica aberto 30 min e, saindo antes do fim, o
+// bot entraria de novo.
+async function maybeRunSekhmet(): Promise<void> {
+  if (!polling || !isChecked("act-sekhmet") || swBusy || gbBusy || activitiesRunning || contBusy || watchdogBusy || loggingIn || outOfWorldSince !== 0) return;
+  if (Date.now() - swLastRunAt < GB_CHECK_MS) return;
+  swLastRunAt = Date.now();
+  swBusy = true;
+  try {
+    await resumeTrainAfterSekhmet();
+    if (activitiesDone()["act-sekhmet"] === gameDay()) return;
+    if (!(await window.sro.sekhmetOpen().catch(() => false))) {
+      setSwStatus("aguardando abertura", "bg-ink-600 text-muted");
+      swWarnedTrain = false;
+      return;
+    }
+    if (trainRunning) {
+      if (!(await stopTrainLoop())) {
+        if (!swWarnedTrain) log("Sekhmet War aberta, mas o loop do Treino nao parou a tempo; tento de novo em seguida.");
+        swWarnedTrain = true;
+        return;
+      }
+      swResumeTrain = true;
+    }
+    log("Sekhmet War aberta: entrando.");
+    const ok = await runSekhmetActivity();
+    if (ok) markDone("act-sekhmet");
+    // Falhou (entrada recusada): proxima tentativa em 1 min, nao em 15 s.
+    else swLastRunAt = Date.now() + 60 * 1000 - GB_CHECK_MS;
+    await resumeTrainAfterSekhmet();
+  } finally {
+    swBusy = false;
   }
 }
 
@@ -1196,7 +1309,7 @@ let qigongNextAt = 0;
 // pedidos sairam junto com ela).
 // Com o Guild Boss rodando o Qigong nao entra: ele leva o char pro Guild Hall, e de
 // la o jogo nao deixa entrar na arena.
-const qigongBlocked = () => dailyBusy || contBusy || gbBusy;
+const qigongBlocked = () => dailyBusy || contBusy || gbBusy || swBusy;
 
 // Aceitar: o convite se recusa sozinho em 15 s, entao confere a cada 4 s. Na mesma
 // batida, a rede de seguranca do Guild Hall (char parado la depois de um Qigong).
@@ -2080,6 +2193,7 @@ async function onActivityToggle(id: string): Promise<void> {
   if (!on) {
     unmarkDone(id);
     if (id === "act-guildboss") await window.sro.stopGuildBoss();
+    if (id === "act-sekhmet") await window.sro.stopSekhmet();
     if (id === "act-tower") await window.sro.stopTower();
     if (id === "act-cont") await window.sro.stopContinental();
   }
@@ -2319,6 +2433,7 @@ async function measureExp(label: string, fn: () => Promise<boolean>): Promise<bo
 const runFirmActivity = (): Promise<boolean> => measureExp("Firm", runFirmActivityInner);
 const runGuildActivity = (): Promise<boolean> => measureExp("Guild utilities", runGuildActivityInner);
 const runGuildBossActivity = (): Promise<boolean> => measureExp("Guild Boss", runGuildBossActivityInner);
+const runSekhmetActivity = (): Promise<boolean> => measureExp("Sekhmet War", runSekhmetActivityInner);
 const runCardAlbumActivity = (): Promise<boolean> => measureExp("Album de Cards", runCardAlbumActivityInner);
 const runTowerActivity = (): Promise<boolean> => measureExp("Demon Locking Tower", runTowerActivityInner);
 const runContinentalActivity = (): Promise<boolean> => measureExp("Continental Exploration", runContinentalActivityInner);
@@ -2950,6 +3065,9 @@ function wire(): void {
   wireActivityFlag("act-firm", "act-firm");
   wireActivityFlag("act-guild", "act-guild");
   wireActivityFlag("act-guildboss", "act-guildboss");
+  wireActivityFlag("act-sekhmet", "act-sekhmet");
+  loadSekhmetConfig();
+  $("sw-buffs").addEventListener("change", saveSekhmetConfig);
   wireActivityFlag("act-actchest", "act-actchest");
   wireActivityFlag("act-freebies", "act-freebies");
   wireActivityFlag("fb-donate", "fb-donate");
@@ -2993,6 +3111,7 @@ function wire(): void {
   // Guild Boss fora da fila: em 2026-11-18 ele nao entrou sozinho as 12:00 UTC,
   // quando a janela dos envelopes da guilda segura o Gratis do dia na fila.
   window.setInterval(() => void maybeRunGuildBoss().catch((e) => log(`Guild Boss: checagem falhou: ${String(e)}`)), GB_CHECK_MS);
+  window.setInterval(() => void maybeRunSekhmet().catch((e) => log(`Sekhmet War: checagem falhou: ${String(e)}`)), GB_CHECK_MS);
   // Mochila: confere a cada 2 min com o bot rodando e o char em mundo.
   window.setInterval(() => {
     if (polling && !watchdogBusy && !loggingIn && outOfWorldSince === 0) void checkBag().catch(() => undefined);
