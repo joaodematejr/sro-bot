@@ -629,6 +629,8 @@ interface FirmUiConfig {
   allowItems: number[];
   askHelp: boolean;
   allowTeleport: boolean;
+  reroll?: boolean;
+  rerollTarget?: number;
 }
 
 const FIRM_DEFAULT: FirmUiConfig = { stopAfter: 3, maxQuality: 2, allowItems: [], askHelp: true, allowTeleport: true };
@@ -646,6 +648,8 @@ function readFirmUi(): FirmUiConfig {
     allowItems: items,
     askHelp: ($("fm-help") as HTMLInputElement).checked,
     allowTeleport: ($("fm-teleport") as HTMLInputElement).checked,
+    reroll: ($("fm-reroll") as HTMLInputElement).checked,
+    rerollTarget: n("fm-reroll-target", 3),
   };
 }
 
@@ -655,6 +659,8 @@ function applyFirmUi(c: FirmUiConfig): void {
   ($("fm-allow") as HTMLInputElement).value = c.allowItems.join(", ");
   ($("fm-help") as HTMLInputElement).checked = c.askHelp;
   ($("fm-teleport") as HTMLInputElement).checked = c.allowTeleport;
+  ($("fm-reroll") as HTMLInputElement).checked = !!c.reroll;
+  ($("fm-reroll-target") as HTMLSelectElement).value = String(c.rerollTarget ?? 3);
 }
 
 function loadFirmConfig(): FirmUiConfig {
@@ -774,7 +780,7 @@ async function runGuildActivityInner(): Promise<boolean> {
 
 interface GuildBossUiConfig {
   enabled: boolean;
-  goldBuffsMax: number;
+  buffs: number;
   dodgeSupreme: boolean;
   autoFight: boolean;
 }
@@ -782,7 +788,7 @@ interface GuildBossUiConfig {
 function readGuildBossUi(): GuildBossUiConfig {
   return {
     enabled: isChecked("act-guildboss"),
-    goldBuffsMax: Number(($("gb-buffs") as HTMLSelectElement)?.value ?? "5"),
+    buffs: Number(($("gb-buffs") as HTMLSelectElement)?.value ?? "0") || 0,
     dodgeSupreme: isChecked("gb-dodge"),
     autoFight: true,
   };
@@ -801,9 +807,11 @@ function loadGuildBossConfig(): void {
     const raw = localStorage.getItem("guildBossConfig");
     if (!raw) return;
     const c = JSON.parse(raw) as Partial<GuildBossUiConfig>;
-    if (typeof c.goldBuffsMax === "number") {
+    // O goldBuffsMax antigo (padrao 5) nunca comprou nada: fica de fora, o buff so
+    // liga escolhido no card.
+    if (typeof c.buffs === "number") {
       const sel = $("gb-buffs") as HTMLSelectElement;
-      if (sel) sel.value = String(c.goldBuffsMax);
+      if (sel) sel.value = String(c.buffs);
     }
     if (typeof c.dodgeSupreme === "boolean") {
       const chk = $("gb-dodge") as HTMLInputElement;

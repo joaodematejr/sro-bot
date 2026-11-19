@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld("sro", {
   ents: () => ipcRenderer.invoke("engine:ents"),
   buffs: () => ipcRenderer.invoke("engine:buffs"),
   navmesh: (scene: number) => ipcRenderer.invoke("engine:navmesh", scene),
-  runGuildBoss: (cfg: { enabled: boolean; goldBuffsMax: number; dodgeSupreme: boolean; autoFight: boolean }) =>
+  runGuildBoss: (cfg: { enabled: boolean; buffs?: number; dodgeSupreme: boolean; autoFight: boolean }) =>
     ipcRenderer.invoke("engine:guildboss", cfg),
   stopGuildBoss: () => ipcRenderer.invoke("engine:guildbossstop"),
   guildBossOpen: () => ipcRenderer.invoke("engine:guildbossopen"),
@@ -51,7 +51,7 @@ contextBridge.exposeInMainWorld("sro", {
   stopTrain: () => ipcRenderer.invoke("engine:trainstop"),
   pauseTrain: (reason: string | null) => ipcRenderer.invoke("engine:trainpause", reason),
   trainSpot: () => ipcRenderer.invoke("engine:trainspot"),
-  runFirm: (cfg: { stopAfter: number; maxQuality: number; allowItems: number[]; askHelp: boolean; allowTeleport: boolean }) =>
+  runFirm: (cfg: { stopAfter: number; maxQuality: number; allowItems: number[]; askHelp: boolean; allowTeleport: boolean; reroll?: boolean; rerollTarget?: number }) =>
     ipcRenderer.invoke("engine:firm", cfg),
   stopFirm: () => ipcRenderer.invoke("engine:firmstop"),
   runGuild: (cfg: { signIn: string; chests: boolean; salary: boolean; redPacket: boolean; storeWeekly?: boolean }) =>
