@@ -628,6 +628,8 @@ interface FirmUiConfig {
   allowItems: number[];
   askHelp: boolean;
   allowTeleport: boolean;
+  reroll?: boolean;
+  rerollTarget?: number;
 }
 
 const FIRM_DEFAULT: FirmUiConfig = { stopAfter: 3, maxQuality: 2, allowItems: [], askHelp: true, allowTeleport: true };
@@ -645,6 +647,8 @@ function readFirmUi(): FirmUiConfig {
     allowItems: items,
     askHelp: ($("fm-help") as HTMLInputElement).checked,
     allowTeleport: ($("fm-teleport") as HTMLInputElement).checked,
+    reroll: ($("fm-reroll") as HTMLInputElement).checked,
+    rerollTarget: n("fm-reroll-target", 3),
   };
 }
 
@@ -654,6 +658,8 @@ function applyFirmUi(c: FirmUiConfig): void {
   ($("fm-allow") as HTMLInputElement).value = c.allowItems.join(", ");
   ($("fm-help") as HTMLInputElement).checked = c.askHelp;
   ($("fm-teleport") as HTMLInputElement).checked = c.allowTeleport;
+  ($("fm-reroll") as HTMLInputElement).checked = !!c.reroll;
+  ($("fm-reroll-target") as HTMLSelectElement).value = String(c.rerollTarget ?? 3);
 }
 
 function loadFirmConfig(): FirmUiConfig {

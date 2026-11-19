@@ -5,6 +5,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 ## [Nao lancado]
 
 - **App:** Guild Boss: compra o **buff de ataque por gold** na arena, na quantidade escolhida no card (padrao nenhum; 20 mil gold cada, limite do jogo 10). Compra com o char ja lutando e fora do aviso do golpe, espera a conta subir entre os pedidos e desiste se o servidor recusar. O de Silk nunca. O valor antigo do card (5, que nunca comprou nada) nao vale: e preciso escolher de novo. Ideia de um contribuidor (patch da 0.154.0); o patch comprava antes da fuga do golpe e sem limite. Como testar: escolher 3 buffs no card; na arena o log mostra "comprando buff de ataque por gold (1/3)" ate 3/3 e o gold cai 60 mil. Sem prova ao vivo.
+- **App:** Firm: opcao **roleta gratis da cartela** (desligada por padrao). Antes do premio total, gira a roleta (`SendToRefreshTaskOp` DROT_Refresh com o roleid do proprio char, o mesmo do botao do jogo) ate a nota escolhida (B, A ou S), so enquanto `_refresh_num` mostra giro gratis e no maximo 3 por passada. Com 0 giros o botao do jogo compra giro (DROT_BuyCount); o bot nunca manda. Ideia de um contribuidor (patch da 0.154.0), refeita sem as mudancas da entrega e da missao. Como testar: marcar a opcao no Firm com a cartela abaixo de A; o log mostra "girar a roleta gratis do Firm (nota X, alvo A; N giro(s) gratis)" e a nota sobe ou os giros acabam. Sem prova ao vivo.
 
 ## [0.153.0] - 2026-11-18
 
