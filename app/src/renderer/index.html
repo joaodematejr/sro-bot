@@ -350,7 +350,7 @@
                 <div class="flex items-center justify-between">
                   <div>
                     <div class="text-sm font-semibold">Guild Boss</div>
-                    <div class="text-xs text-muted">quando o Guild Boss abre: sai da party, entra na arena, liga o auto-play e, no aviso do golpe forte do boss ("quickly find a safezone"), para o auto-play, corre pro círculo mais perto e volta a atacar uns segundos depois. No fim do evento sai da arena. Os buffs por gold ainda não são comprados</div>
+                    <div class="text-xs text-muted">quando o Guild Boss abre: sai da party, entra na arena, liga o auto-play e, no aviso do golpe forte do boss ("quickly find a safezone"), para o auto-play, corre pro círculo mais perto e volta a atacar uns segundos depois. No fim do evento sai da arena. Com buffs escolhidos, compra o buff de ataque por gold já lutando (nunca o de Silk)</div>
                   </div>
                   <div class="flex items-center gap-3">
                     <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer select-none"><input type="checkbox" id="act-guildboss" class="accent-gold w-4 h-4" /> Ativa</label>
@@ -360,11 +360,11 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-300">
                   <label class="flex items-center gap-2">Buffs por Gold
                     <select id="gb-buffs" class="bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100">
-                      <option value="0">Nenhum</option>
-                      <option value="1">1 buff (10k gold)</option>
-                      <option value="3">3 buffs (30k gold)</option>
-                      <option value="5" selected>5 buffs (50k gold)</option>
-                      <option value="10">10 buffs (100k gold)</option>
+                      <option value="0" selected>Nenhum</option>
+                      <option value="1">1 buff (20 mil gold)</option>
+                      <option value="3">3 buffs (60 mil gold)</option>
+                      <option value="5">5 buffs (100 mil gold)</option>
+                      <option value="10">10 buffs (200 mil gold)</option>
                     </select>
                   </label>
                   <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="gb-dodge" class="accent-gold w-4 h-4" checked /> Desviar na Safe Zone (golpe supremo)</label>
