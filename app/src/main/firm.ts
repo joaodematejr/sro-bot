@@ -48,7 +48,7 @@ export async function runFirm(
   const t0 = Date.now();
   while (!stopRequested && Date.now() - t0 < RUN_TIMEOUT_MS) {
     const now = Date.now();
-    const s = await readFirmSnapshot(q);
+    const s = await readFirmSnapshot(q, cfg);
     prog = trackFirm(prog, s, now);
     const step = nextFirmStep(s, cfg, prog, now);
     if (step.kind === "done") {
