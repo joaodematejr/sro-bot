@@ -22,10 +22,16 @@
 //                  DailyTaskMinTotalTaskCount (3) entregues; get_IsRewarded = ja pego.
 //                  Medido em 2026-11-10: cada entrega da ~3,75 a 4,3 M de EXP e o
 //                  premio total ~5,5 M. useItemPass sempre 0.
-// Nunca: "Instant Quest Completion" (item) nem trocar as tarefas (pode ser Silk).
+//   Roleta      -> a nota da cartela (get_CurScore, 0 a 4; 4 = a melhor) sobe com
+//                  SendToRefreshTaskOp(DROT_Refresh 1, roleid do char), so enquanto
+//                  houver giro gratis (_refresh_num; 3 por dia). Com 0 giros o botao
+//                  do jogo manda DROT_BuyCount (3), que e pago: o bot nunca manda.
+//                  Ideia e mapeamento de um contribuidor (2026-11-19); sem prova ao vivo.
+// Nunca: "Instant Quest Completion" (item) nem comprar giro da roleta (pode ser Silk).
 
 import type { EngineQuery } from "./tower";
 import { hpPercent, readEnemiesAround, safeToStopHunt } from "./train";
+import { roleId } from "./chat";
 
 export const FIRM_QUEST_ID = 2222;
 export const QUEST_CAN_TAKE = 1;
@@ -35,6 +41,15 @@ export const ASK_HELP_PER_DAY = 3;
 // Entregas minimas pro premio total (XGlobalConfig DailyTaskMinTotalTaskCount, lido 3).
 export const FIRM_TOTAL_MIN = 3;
 export const FIRM_TOTAL_BODY = "callsi XGuildDailyTaskDocument SendToGetMyTaskReward 3 2 0 0";
+// Nota da cartela: o jogo para de deixar girar na 4.
+export const FIRM_BEST_SCORE = 4;
+export const FIRM_SPINS_PER_DAY = 3;
+export const FIRM_SCORE_NAMES = ["D", "C", "B", "A", "S"];
+// DROT_Refresh com o roleid do proprio char (o mesmo do botao do jogo).
+export function refreshBody(roleId: string): string {
+  if (!/^[1-9]\d*$/.test(roleId)) throw new Error("roleid invalido");
+  return `callx XGuildDailyTaskDocument SendToRefreshTaskOp 2 -- i:1 q:${roleId}`;
+}
 
 export interface FirmConfig {
   stopAfter: number; // para com N entregues no dia (padrao 3)
@@ -42,6 +57,8 @@ export interface FirmConfig {
   allowItems: number[]; // itemIDs liberados mesmo acima da qualidade
   askHelp: boolean; // pede ajuda a guilda no que nao da pra entregar
   allowTeleport: boolean; // aceita a viagem paga em gold ate o Leebaek
+  reroll?: boolean; // gira a roleta gratis da cartela ate a nota alvo (desligado se ausente)
+  rerollTarget?: number; // nota alvo de get_CurScore: 2 B, 3 A, 4 S (padrao 3)
 }
 
 export const DEFAULT_FIRM_CONFIG: FirmConfig = {
@@ -72,9 +89,12 @@ export interface FirmSnapshot {
   totalRewarded?: boolean; // premio total do dia ja pego (undefined = nao lido)
   inGuild?: boolean; // so lido quando a missao nao esta na lista
   tasks: FirmTask[];
+  refreshNum?: number; // giros gratis da roleta (_refresh_num)
+  curScore?: number; // nota da cartela (get_CurScore)
+  roleId?: string; // roleid de 64 bits do char (so lido com a roleta ligada)
 }
 
-export type FirmAction = "stophunt" | "goto" | "teleport" | "take" | "submit" | "ask" | "total" | "close" | "defend";
+export type FirmAction = "stophunt" | "goto" | "teleport" | "take" | "refresh" | "submit" | "ask" | "total" | "close" | "defend";
 
 export type FirmStep =
   | { kind: "done"; reason: string }
@@ -105,10 +125,11 @@ export interface FirmProgress {
   submitted: number[]; // taskIDs entregues nesta passada
   asked: number[];
   totalSent: boolean; // pediu o premio total nesta passada
+  spins: number; // giros da roleta mandados nesta passada (nunca passa dos gratis do dia)
 }
 
 export function newFirmProgress(): FirmProgress {
-  return { huntStopped: false, gotoSentAt: 0, teleports: 0, teleportAt: 0, arrivedAt: 0, movedAt: 0, unsafeSince: 0, defended: false, takeSent: false, submitted: [], asked: [], totalSent: false };
+  return { huntStopped: false, gotoSentAt: 0, teleports: 0, teleportAt: 0, arrivedAt: 0, movedAt: 0, unsafeSince: 0, defended: false, takeSent: false, submitted: [], asked: [], totalSent: false, spins: 0 };
 }
 
 // Conclui o dia (Submit) so com o servidor dizendo que o premio total nao foi pego.
@@ -186,6 +207,8 @@ export function nextFirmStep(s: FirmSnapshot | null, cfg: FirmConfig, p: FirmPro
   }
   if (s.questStatus !== QUEST_TAKEN) return { kind: "done", reason: "Firm de hoje ja fechado" };
   if (!s.tasks.length) return { kind: "wait", reason: "esperando as tarefas do dia" };
+  const spin = rerollStep(s, cfg, p);
+  if (spin) return spin;
   if (s.count >= cfg.stopAfter) return totalStep(s, p) ?? { kind: "done", reason: `${s.count} tarefa(s) entregue(s) hoje (meta ${cfg.stopAfter})${totalNote(s, p)}` };
   const ready = s.tasks.find((t) => canSubmit(t, cfg) && !p.submitted.includes(t.taskId));
   if (ready)
@@ -221,6 +244,7 @@ export function afterFirmAction(p: FirmProgress, step: FirmStep, now: number, s:
   if (step.id === "teleport") return { ...p, teleports: p.teleports + 1, teleportAt: now };
   if (step.id === "take") return { ...p, takeSent: true };
   if (step.id === "total") return { ...p, totalSent: true };
+  if (step.id === "refresh") return { ...p, spins: p.spins + 1 };
   const m = /tarefa (\d+)\)/.exec(step.name);
   if (step.id === "submit" && m) return { ...p, submitted: [...p.submitted, Number(m[1])] };
   if (step.id === "ask" && s) {
@@ -230,8 +254,20 @@ export function afterFirmAction(p: FirmProgress, step: FirmStep, now: number, s:
   return p;
 }
 
+// Roleta gratis antes do premio total: so com giro gratis lido, a nota lida abaixo
+// do alvo e o roleid do char. Cada giro espera a resposta (a nota e os giros mudam).
+export function rerollStep(s: FirmSnapshot, cfg: FirmConfig, p: FirmProgress): FirmStep | null {
+  if (!cfg.reroll || !s.roleId || s.totalRewarded || p.spins >= FIRM_SPINS_PER_DAY) return null;
+  if (s.refreshNum === undefined || s.refreshNum <= 0 || s.curScore === undefined) return null;
+  const target = Math.min(FIRM_BEST_SCORE, Math.max(1, cfg.rerollTarget ?? 3));
+  if (s.curScore >= target) return null;
+  const name = (n: number) => FIRM_SCORE_NAMES[n] ?? String(n);
+  return act("refresh", `girar a roleta gratis do Firm (nota ${name(s.curScore)}, alvo ${name(target)}; ${s.refreshNum} giro(s) gratis)`,
+    refreshBody(s.roleId), 4000);
+}
+
 // Le o estado pelo engine. Null = engine fora.
-export async function readFirmSnapshot(q: EngineQuery): Promise<FirmSnapshot | null> {
+export async function readFirmSnapshot(q: EngineQuery, cfg?: FirmConfig): Promise<FirmSnapshot | null> {
   const conn = await q("CONN", "");
   const player = conn.player as Record<string, unknown> | undefined;
   if (!player) return null;
@@ -271,6 +307,15 @@ export async function readFirmSnapshot(q: EngineQuery): Promise<FirmSnapshot | n
   }
   if (s.questStatus !== QUEST_TAKEN) return s;
   s.askedNum = await num(`${DOC} _askedNum`, 0);
+  if (cfg?.reroll) {
+    const rn = await q("GETP", `${DOC} _refresh_num`);
+    if (rn.ok === true && typeof rn.int === "number") s.refreshNum = rn.int;
+    const sc = await q("GETP", `${DOC} get_CurScore`);
+    if (sc.ok === true && typeof sc.int === "number") s.curScore = sc.int;
+    const lo = await q("GETP", "XAttributeMgr get_XPlayerData _id");
+    const hi = await q("GETP", "XAttributeMgr get_XPlayerData _id+4");
+    if (typeof lo.int === "number" && typeof hi.int === "number" && lo.ok === true && hi.ok === true) s.roleId = roleId(lo.int, hi.int);
+  }
   const total = await q("GETP", `${DOC} get_IsRewarded`);
   if (total.ok === true) s.totalRewarded = total.bool === true;
   const tn = Math.min(await num(`${DOC} _curGuildDailyTaskList get_Count`, 0), 12);

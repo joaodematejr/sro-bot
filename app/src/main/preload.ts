@@ -50,7 +50,7 @@ contextBridge.exposeInMainWorld("sro", {
   stopTrain: () => ipcRenderer.invoke("engine:trainstop"),
   pauseTrain: (reason: string | null) => ipcRenderer.invoke("engine:trainpause", reason),
   trainSpot: () => ipcRenderer.invoke("engine:trainspot"),
-  runFirm: (cfg: { stopAfter: number; maxQuality: number; allowItems: number[]; askHelp: boolean; allowTeleport: boolean }) =>
+  runFirm: (cfg: { stopAfter: number; maxQuality: number; allowItems: number[]; askHelp: boolean; allowTeleport: boolean; reroll?: boolean; rerollTarget?: number }) =>
     ipcRenderer.invoke("engine:firm", cfg),
   stopFirm: () => ipcRenderer.invoke("engine:firmstop"),
   runGuild: (cfg: { signIn: string; chests: boolean; salary: boolean; redPacket: boolean; storeWeekly?: boolean }) =>

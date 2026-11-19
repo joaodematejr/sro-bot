@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** Firm: opcao **roleta gratis da cartela** (desligada por padrao). Antes do premio total, gira a roleta (`SendToRefreshTaskOp` DROT_Refresh com o roleid do proprio char, o mesmo do botao do jogo) ate a nota escolhida (B, A ou S), so enquanto `_refresh_num` mostra giro gratis e no maximo 3 por passada. Com 0 giros o botao do jogo compra giro (DROT_BuyCount); o bot nunca manda. Ideia de um contribuidor (patch da 0.154.0), refeita sem as mudancas da entrega e da missao. Como testar: marcar a opcao no Firm com a cartela abaixo de A; o log mostra "girar a roleta gratis do Firm (nota X, alvo A; N giro(s) gratis)" e a nota sobe ou os giros acabam. Sem prova ao vivo.
+
 ## [0.153.0] - 2026-11-18
 
 - **App:** Treino: nova opcao **reviver no local com Resurrection scroll** (desligada por padrao). Morto, com pergaminho na mochila e perda de EXP na morte, o bot revive no lugar em 2 s pelo `XReviveDocument SendReviveRpc(ReviveOnTheSpot)`, o mesmo do botao, e nao perde EXP: reviver na cidade tirava 59,7 M do char principal Lv.87. Gasta 1 pergaminho por morte. Sem pergaminho, sem perda de EXP ou sem sucesso ate 45 s, revive na cidade como antes. O RevivePlace do auto-play continua na cidade: no local sem pergaminho o jogo abria a compra com Diamond e deixava o char 5 min morto. Como testar: marcar a opcao no Treino; na proxima morte o log mostra "reviver no local com Resurrection scroll (N na mochila; nao perde X de EXP)" e o char volta a cacar no mesmo lugar, com um pergaminho a menos. Sem prova ao vivo (precisa de uma morte).
