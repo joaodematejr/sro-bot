@@ -773,7 +773,7 @@ async function runGuildActivityInner(): Promise<boolean> {
 
 interface GuildBossUiConfig {
   enabled: boolean;
-  goldBuffsMax: number;
+  buffs: number;
   dodgeSupreme: boolean;
   autoFight: boolean;
 }
@@ -781,7 +781,7 @@ interface GuildBossUiConfig {
 function readGuildBossUi(): GuildBossUiConfig {
   return {
     enabled: isChecked("act-guildboss"),
-    goldBuffsMax: Number(($("gb-buffs") as HTMLSelectElement)?.value ?? "5"),
+    buffs: Number(($("gb-buffs") as HTMLSelectElement)?.value ?? "0") || 0,
     dodgeSupreme: isChecked("gb-dodge"),
     autoFight: true,
   };
@@ -800,9 +800,11 @@ function loadGuildBossConfig(): void {
     const raw = localStorage.getItem("guildBossConfig");
     if (!raw) return;
     const c = JSON.parse(raw) as Partial<GuildBossUiConfig>;
-    if (typeof c.goldBuffsMax === "number") {
+    // O goldBuffsMax antigo (padrao 5) nunca comprou nada: fica de fora, o buff so
+    // liga escolhido no card.
+    if (typeof c.buffs === "number") {
       const sel = $("gb-buffs") as HTMLSelectElement;
-      if (sel) sel.value = String(c.goldBuffsMax);
+      if (sel) sel.value = String(c.buffs);
     }
     if (typeof c.dodgeSupreme === "boolean") {
       const chk = $("gb-dodge") as HTMLInputElement;
