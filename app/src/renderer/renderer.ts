@@ -86,6 +86,7 @@ declare global {
       runContinental: (cfg: ContinentalUiConfig) => Promise<{ ok: boolean; erro?: string; restart?: boolean }>;
       stopContinental: () => Promise<void>;
       chestLeft: () => Promise<number | null>;
+      continentalDice: () => Promise<number | null>;
       aiGet: () => Promise<{ settings: AiSettingsUi; hasKey: boolean }>;
       aiSet: (s: AiSettingsUi, key?: string) => Promise<{ ok: boolean; erro?: string; settings?: AiSettingsUi; hasKey?: boolean }>;
       aiSnapshot: (appInfo: AiAppInfo) => Promise<Record<string, unknown>>;
@@ -632,6 +633,8 @@ interface FirmUiConfig {
   allowItems: number[];
   askHelp: boolean;
   allowTeleport: boolean;
+  reroll?: boolean;
+  rerollTarget?: number;
 }
 
 const FIRM_DEFAULT: FirmUiConfig = { stopAfter: 3, maxQuality: 2, allowItems: [], askHelp: true, allowTeleport: true };
@@ -649,6 +652,8 @@ function readFirmUi(): FirmUiConfig {
     allowItems: items,
     askHelp: ($("fm-help") as HTMLInputElement).checked,
     allowTeleport: ($("fm-teleport") as HTMLInputElement).checked,
+    reroll: ($("fm-reroll") as HTMLInputElement).checked,
+    rerollTarget: n("fm-reroll-target", 3),
   };
 }
 
@@ -658,6 +663,8 @@ function applyFirmUi(c: FirmUiConfig): void {
   ($("fm-allow") as HTMLInputElement).value = c.allowItems.join(", ");
   ($("fm-help") as HTMLInputElement).checked = c.askHelp;
   ($("fm-teleport") as HTMLInputElement).checked = c.allowTeleport;
+  ($("fm-reroll") as HTMLInputElement).checked = !!c.reroll;
+  ($("fm-reroll-target") as HTMLSelectElement).value = String(c.rerollTarget ?? 3);
 }
 
 function loadFirmConfig(): FirmUiConfig {
@@ -777,7 +784,7 @@ async function runGuildActivityInner(): Promise<boolean> {
 
 interface GuildBossUiConfig {
   enabled: boolean;
-  goldBuffsMax: number;
+  buffs: number;
   dodgeSupreme: boolean;
   autoFight: boolean;
 }
@@ -785,7 +792,7 @@ interface GuildBossUiConfig {
 function readGuildBossUi(): GuildBossUiConfig {
   return {
     enabled: isChecked("act-guildboss"),
-    goldBuffsMax: Number(($("gb-buffs") as HTMLSelectElement)?.value ?? "5"),
+    buffs: Number(($("gb-buffs") as HTMLSelectElement)?.value ?? "0") || 0,
     dodgeSupreme: isChecked("gb-dodge"),
     autoFight: true,
   };
@@ -804,9 +811,11 @@ function loadGuildBossConfig(): void {
     const raw = localStorage.getItem("guildBossConfig");
     if (!raw) return;
     const c = JSON.parse(raw) as Partial<GuildBossUiConfig>;
-    if (typeof c.goldBuffsMax === "number") {
+    // O goldBuffsMax antigo (padrao 5) nunca comprou nada: fica de fora, o buff so
+    // liga escolhido no card.
+    if (typeof c.buffs === "number") {
       const sel = $("gb-buffs") as HTMLSelectElement;
-      if (sel) sel.value = String(c.goldBuffsMax);
+      if (sel) sel.value = String(c.buffs);
     }
     if (typeof c.dodgeSupreme === "boolean") {
       const chk = $("gb-dodge") as HTMLInputElement;
@@ -1778,6 +1787,32 @@ function contDue(now = Date.now()): boolean {
   }
 }
 
+// Dado guardado antes das 12 h tambem roda (1 dado a cada ~1h30, ate 10), com
+// pelo menos esse intervalo desde a ultima rodada: uma rodada que deixa dado
+// sobrando nao repete a cada minuto.
+const CONT_DICE_GAP_MS = 90 * 60 * 1000;
+
+function contLastAt(): number {
+  try {
+    return Number(localStorage.getItem("contLastAt") ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+function markContRun(): void {
+  try {
+    localStorage.setItem("contLastAt", String(Date.now()));
+  } catch {
+    /* sem storage: o intervalo dos dados nao vale ate a proxima rodada */
+  }
+}
+
+// Rodada agendada, por dado guardado ou pelo botao: marca a proxima.
+async function runContinentalRound(): Promise<void> {
+  setContNext((await runContinentalSafely()) ? CONT_EVERY_MS : CONT_RETRY_MS);
+}
+
 function setContNext(ms: number): void {
   try {
     localStorage.setItem("contNextAt", String(Date.now() + ms));
@@ -1832,6 +1867,7 @@ let contAtSpot = false;
 async function runContinentalSafely(): Promise<boolean> {
   if (contBusy) return false;
   contBusy = true;
+  markContRun();
   let resume = false;
   try {
     if (trainRunning) {
@@ -1854,11 +1890,17 @@ async function runContinentalSafely(): Promise<boolean> {
 // Agenda: com o Treino marcado, o Continental espera ele comecar e rola no ponto
 // com a caca do jogo ligada (runContinentalSafely).
 async function maybeRunContinental(): Promise<void> {
-  if (!polling || !isChecked("act-cont") || !contDue() || contBusy || watchdogBusy || loggingIn) return;
+  if (!polling || !isChecked("act-cont") || contBusy || watchdogBusy || loggingIn) return;
   // Treino marcado e ainda comecando: espera ele subir. Treino ja concluido
   // (limite de mortes, meta) deixou o char na cidade: roda direto.
   if (isChecked("act-train") && !trainRunning && activitiesRunning) return;
-  setContNext((await runContinentalSafely()) ? CONT_EVERY_MS : CONT_RETRY_MS);
+  if (!contDue()) {
+    if (Date.now() - contLastAt() < CONT_DICE_GAP_MS) return;
+    const dice = await window.sro.continentalDice().catch(() => null);
+    if (!dice || dice <= 0) return;
+    log(`Continental: ${dice} dado(s) guardado(s); rolando antes das 12 h.`);
+  }
+  await runContinentalRound();
 }
 
 // Passada so de baus entre as rodadas de dado: pega o pronto e comeca o proximo.
@@ -3168,6 +3210,12 @@ function wire(): void {
   $("btn-ce-save").addEventListener("click", () => {
     saveContConfig();
     log("config do Continental Exploration salva.");
+  });
+  $("btn-ce-run").addEventListener("click", () => {
+    if (contBusy) return log("Continental ja esta rodando.");
+    if (!polling) return log("Continental: inicie o bot antes de rolar.");
+    log("Continental: rodada pedida no botao.");
+    void runContinentalRound().catch((e) => log(`Continental falhou: ${String(e)}`));
   });
 
   document.querySelectorAll<HTMLElement>(".tab").forEach((tab) => {

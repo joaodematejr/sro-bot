@@ -38,6 +38,15 @@ export const LEAVE_TEAM_BODY = "callx XTeamDocument ReqTeamOp 7 -- i:3 q:0 n i:1
 export const ENTER_BOSS_BODY = "calls XGuildDragonDocument ReqEnterScene 0";
 export const EXIT_REWARD_BODY = "callp XLevelRewardView _DlgHandler OnContinueClick 1";
 export const LEAVE_ARENA_BODY = "calls XGuildDragonDocument ReqQuitScene 0";
+// Buff de ataque da arena: o botao de gold do BattleWorldBossHandler (indice 0,
+// custo XGlobalConfig GuildBossConsume, 20.000 gold lido em 2026-11-19). O de Silk
+// e outro botao e nunca e usado. Limite: GetMaxEncourageTimes (10).
+export const ENCOURAGE_GOLD_BODY = "calls XGuildDragonDocument ReqEncourage 0";
+export const ENCOURAGE_COUNT_BODY = "XGuildDragonDocument get_EncourageCount";
+export const ENCOURAGE_MAX_BODY = "XGuildDragonDocument GetMaxEncourageTimes";
+export const BUFF_RETRY_MS = 3_000;
+// Pedidos sem a conta subir (gold acabou, servidor recusou): desiste.
+export const BUFF_EXTRA_TRIES = 3;
 export const NOTICE_TIME_BODY = "BattleMain NoticeTime";
 export const SCRIPT_COUNT_BODY = "XLevelScriptMgr CommandCount";
 export const SCRIPT_CMD_BODY = "XLevelScriptMgr _currentCmd cmd";
@@ -59,14 +68,13 @@ export const DODGE_HOLD_MS = 10_000;
 
 export interface GuildBossConfig {
   enabled: boolean;
-  goldBuffsMax: number; // ainda nao usado: o fluxo nao compra buff
+  buffs?: number; // buffs de ataque por gold a comprar na arena (0 = nenhum; padrao 0)
   dodgeSupreme: boolean; // corre pra safe zone no aviso do golpe forte
   autoFight: boolean; // liga o auto-play dentro da arena
 }
 
 export const DEFAULT_GUILD_BOSS_CONFIG: GuildBossConfig = {
   enabled: true,
-  goldBuffsMax: 5,
   dodgeSupreme: true,
   autoFight: true,
 };
@@ -89,6 +97,8 @@ export interface GuildBossSnapshot {
   noticeOn?: boolean; // notice da BattleMain na tela agora (undefined = nao lido)
   scriptCount?: number; // XLevelScriptMgr CommandCount
   scriptCmd?: number; // tipo do comando atual do script da arena
+  encourageCount?: number; // buffs de gold ja comprados nesta arena
+  encourageMax?: number; // limite do jogo
   zones: SafeZone[];
   pos?: [number, number, number];
   rewardVisible: boolean;
@@ -103,6 +113,8 @@ export interface GuildBossMemory {
   leftTeam: boolean;
   rewardTried: boolean;
   leaveTried: boolean;
+  buffTries: number;
+  lastBuffAt: number;
   lastScriptCount: number; // -1 = ainda nao lido
   dodgeUntil: number; // fica no circulo ate aqui
 }
@@ -117,6 +129,8 @@ export function newGuildBossMemory(): GuildBossMemory {
     leaveTried: false,
     lastScriptCount: -1,
     dodgeUntil: -Infinity,
+    buffTries: 0,
+    lastBuffAt: -Infinity,
   };
 }
 
@@ -160,6 +174,16 @@ export function nearestZone(pos: [number, number, number] | undefined, zones: Sa
   return { zone: best, inside: bd <= Math.max(best.r - SAFE_MARGIN, 0.5) };
 }
 
+export function buffStep(s: GuildBossSnapshot, cfg: GuildBossConfig, m: GuildBossMemory, now: number): GuildBossStep | null {
+  const want = Math.min(Math.max(0, Math.floor(cfg.buffs ?? 0)), s.encourageMax ?? 0);
+  if (want <= 0 || s.encourageCount === undefined || s.encourageCount >= want) return null;
+  if (now - m.lastBuffAt < BUFF_RETRY_MS || m.buffTries >= want + BUFF_EXTRA_TRIES) return null;
+  return {
+    kind: "act", id: "buff", tag: "SKIL", body: ENCOURAGE_GOLD_BODY,
+    name: `comprando buff de ataque por gold (${s.encourageCount + 1}/${want})`,
+  };
+}
+
 export function nextGuildBossStep(s: GuildBossSnapshot | null, cfg: GuildBossConfig, m: GuildBossMemory, now: number): GuildBossStep {
   if (!s) return { kind: "fail", reason: "engine fora" };
   if (!s.inWorld) return { kind: "wait", reason: "aguardando char entrar em mundo..." };
@@ -193,6 +217,9 @@ export function nextGuildBossStep(s: GuildBossSnapshot | null, cfg: GuildBossCon
 
     if (cfg.autoFight && !s.autoPlay)
       return { kind: "act", id: "hunt-on", name: "ligando o auto-play contra o Guild Boss", tag: "SKIL", body: HUNT_ON_BODY };
+    // Buff com o char lutando: a fuga do aviso e a volta do auto-play vem antes.
+    const buff = buffStep(s, cfg, m, now);
+    if (buff) return buff;
     return { kind: "wait", reason: "em batalha contra o Guild Boss..." };
   }
 
@@ -223,6 +250,7 @@ export function afterGuildBossStep(m: GuildBossMemory, step: GuildBossStep, now:
   if (step.id === "leave-team") return { ...m, leftTeam: true };
   if (step.id === "reward") return { ...m, rewardTried: true };
   if (step.id === "leave-arena") return { ...m, leaveTried: true };
+  if (step.id === "buff") return { ...m, buffTries: m.buffTries + 1, lastBuffAt: now };
   return m;
 }
 
@@ -288,6 +316,8 @@ export async function readGuildBossSnapshot(q: EngineQuery, zones: SafeZone[]): 
     scriptCount = num(await q("GETP", SCRIPT_COUNT_BODY));
     scriptCmd = num(await q("GETP", SCRIPT_CMD_BODY));
   }
+  const encourageCount = inBossScene ? num(await q("GETP", ENCOURAGE_COUNT_BODY)) : undefined;
+  const encourageMax = inBossScene ? num(await q("GETP", ENCOURAGE_MAX_BODY)) : undefined;
   return {
     inWorld: player.ok === true,
     inGuild: await bool("XGuildDocument get_bInGuild"),
@@ -299,6 +329,8 @@ export async function readGuildBossSnapshot(q: EngineQuery, zones: SafeZone[]): 
     noticeOn,
     scriptCount,
     scriptCmd,
+    encourageCount,
+    encourageMax,
     zones,
     pos,
     rewardVisible: inBossScene && (num(await q("GETP", "XLevelRewardView _DlgHandler")) ?? 0) !== 0,

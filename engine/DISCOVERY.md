@@ -596,6 +596,11 @@ carregar antes de despejar.
   `XStringTable` ("StringTable not set up yet X_Level_...").
 - Fim: o char fica na arena depois do evento (`bCanFight` falso). Sair:
   `XGuildDragonDocument ReqQuitScene` (o `XScene ReqLeaveScene`), sem prova ao vivo.
+- Buff de ataque (lido no codigo e ao vivo em 2026-11-19, so leitura): o
+  `BattleWorldBossHandler` tem dois botoes. O 0 e gold: `XGuildDragonDocument
+  ReqEncourage()` (`AddTempAttr` type 1), custo `XGlobalConfig GuildBossConsume`
+  = 20000, conta em `get_EncourageCount`, limite `GetMaxEncourageTimes` = 10. O 1
+  e Silk (`ReqEncourageTwo`): nunca.
 
 ## Sekhmet War / World Boss (2026-11-19)
 

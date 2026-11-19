@@ -3,6 +3,9 @@ import { test } from "node:test";
 
 import {
   afterGuildBossStep,
+  BUFF_EXTRA_TRIES,
+  BUFF_RETRY_MS,
+  ENCOURAGE_GOLD_BODY,
   DEFAULT_GUILD_BOSS_CONFIG,
   DODGE_HOLD_MS,
   ENTER_BOSS_BODY,
@@ -170,4 +173,31 @@ test("guild boss: le as zonas da RegionList (floats pelo GETP) e o aberto pelo b
   assert.equal(z[0].x, 533);
   assert.ok(Math.abs(z[0].y - 126.56) < 0.01);
   assert.equal(await guildBossOpenNow(q), true);
+});
+
+test("guild boss: buff de gold so escolhido, lutando, ate o pedido ou o limite do jogo; a fuga vem antes", () => {
+  const bc = { ...cfg, buffs: 3 };
+  const a = (p: Partial<GuildBossSnapshot> = {}) => arena({ encourageCount: 0, encourageMax: 10, ...p });
+  // Padrao: nenhum buff.
+  assert.equal(nextGuildBossStep(a(), cfg, newGuildBossMemory(), T).kind, "wait");
+  const st = nextGuildBossStep(a(), bc, newGuildBossMemory(), T);
+  assert.equal(st.kind === "act" && st.body, ENCOURAGE_GOLD_BODY);
+  assert.match(st.kind === "act" ? st.name : "", /1\/3/);
+  // Auto-play desligado: religa antes de comprar.
+  const on = nextGuildBossStep(a({ autoPlay: false }), bc, newGuildBossMemory(), T);
+  assert.equal(on.kind === "act" && on.body, HUNT_ON_BODY);
+  // Espera a conta subir antes de pedir de novo.
+  let m = afterGuildBossStep(newGuildBossMemory(), st, T);
+  assert.equal(nextGuildBossStep(a(), bc, m, T + 1000).kind, "wait");
+  // Ja tem o pedido, o limite do jogo e menor, contagem nao lida: nao compra.
+  assert.equal(nextGuildBossStep(a({ encourageCount: 3 }), bc, newGuildBossMemory(), T).kind, "wait");
+  assert.equal(nextGuildBossStep(a({ encourageCount: 2, encourageMax: 2 }), bc, newGuildBossMemory(), T).kind, "wait");
+  assert.equal(nextGuildBossStep(a({ encourageCount: undefined }), bc, newGuildBossMemory(), T).kind, "wait");
+  // Recusado sem a conta subir: desiste depois do pedido mais BUFF_EXTRA_TRIES.
+  for (let i = 0; i < 3 + BUFF_EXTRA_TRIES; i++) m = afterGuildBossStep(m, st, T);
+  assert.equal(nextGuildBossStep(a(), bc, m, T + 10 * BUFF_RETRY_MS).kind, "wait");
+  // No aviso do golpe a fuga manda, nao o buff.
+  const dodging = { ...newGuildBossMemory(), dodgeUntil: T + 5000 };
+  const d = nextGuildBossStep(a(), bc, dodging, T);
+  assert.equal(d.kind === "act" && d.body, HUNT_OFF_BODY);
 });

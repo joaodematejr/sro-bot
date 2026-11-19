@@ -194,3 +194,29 @@ test("Firm: com 3 ou mais entregues conclui o dia (Submit) so com o premio total
   const st4 = nextFirmStep(snap({ count: 3, tasks: done3, askedNum: 3, totalRewarded: false }), { ...DEFAULT_FIRM_CONFIG, stopAfter: 4 }, newFirmProgress(), 0);
   assert.equal(st4.kind === "act" && st4.id, "total");
 });
+
+test("roleta: so giro gratis, com nota e roleid lidos, ate o alvo; nunca passa de 3 por passada", () => {
+  const cfg = { ...DEFAULT_FIRM_CONFIG, reroll: true, rerollTarget: 3 };
+  // RoleID ficticio (o do char nao vai pro repo publico).
+  const s = (p: Partial<FirmSnapshot>) => snap({ refreshNum: 3, curScore: 0, roleId: "123456789012345", totalRewarded: false, ...p });
+  const st = nextFirmStep(s({}), cfg, newFirmProgress(), 0);
+  assert.equal(st.kind === "act" && st.id, "refresh");
+  assert.equal(st.kind === "act" && st.body, "callx XGuildDailyTaskDocument SendToRefreshTaskOp 2 -- i:1 q:123456789012345");
+  assert.match(st.kind === "act" ? st.name : "", /nota D, alvo A; 3 giro\(s\) gratis/);
+  // Sem giro gratis, alvo batido, nota ou roleid nao lidos, premio do dia ja pego ou opcao desligada: nunca gira.
+  for (const [c, x] of [
+    [cfg, s({ refreshNum: 0 })], [cfg, s({ curScore: 3 })], [cfg, s({ curScore: 4 })], [cfg, s({ curScore: undefined })],
+    [cfg, s({ refreshNum: undefined })], [cfg, s({ roleId: undefined })], [cfg, s({ totalRewarded: true })], [DEFAULT_FIRM_CONFIG, s({})],
+  ] as const) {
+    const o = nextFirmStep(x, c, newFirmProgress(), 0);
+    assert.notEqual(o.kind === "act" && o.id, "refresh");
+  }
+  // Tres giros mandados nesta passada: para, mesmo com o jogo ainda mostrando giro.
+  let p = newFirmProgress();
+  for (let i = 0; i < 3; i++) p = afterFirmAction(p, nextFirmStep(s({}), cfg, p, i), i, s({}));
+  assert.equal(p.spins, 3);
+  const o = nextFirmStep(s({}), cfg, p, 9);
+  assert.notEqual(o.kind === "act" && o.id, "refresh");
+  // Alvo S para so na 4 (a melhor).
+  assert.equal(nextFirmStep(s({ curScore: 3 }), { ...cfg, rerollTarget: 4 }, newFirmProgress(), 0).kind === "act", true);
+});

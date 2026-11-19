@@ -458,6 +458,13 @@ ipcMain.handle("engine:continentalstop", async () => {
 
 // Segundos que faltam pro bau que esta destravando (null = nenhum destravando).
 // SlotBoxInfo fica lido depois de uma passada no tabuleiro.
+// Dados guardados do Continental (o servidor avisa cada dado novo pelo
+// RiskRecoverDiceNtf, mesmo com a janela fechada). Null = nao lido.
+ipcMain.handle("engine:continentaldice", async () => {
+  const r = await sendCommand("127.0.0.1", HOST_PORT, "GETP", "XSuperRiskDocument m_leftDiceTime");
+  return r.ok === true && typeof r.int === "number" ? r.int : null;
+});
+
 ipcMain.handle("engine:chestleft", async () => {
   const q = (tag: string, body: string) => sendCommand("127.0.0.1", HOST_PORT, tag, body);
   const keys = await q("KEYS", "XSuperRiskDocument SlotBoxInfo");
