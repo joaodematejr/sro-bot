@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** Continental Exploration: rola tambem antes das 12 h quando ha dado guardado (`XSuperRiskDocument m_leftDiceTime`, que o servidor atualiza a cada dado novo pelo `RiskRecoverDiceNtf`), com pelo menos 1h30 desde a ultima rodada; e novo botao **Rolar agora** no card. Antes os dados ficavam parados ate a janela de 12 h. O Treino pausa o loop mais vezes (a rodada continua no ponto, com a caca ligada). Ideia de um contribuidor (patch da 0.154.0); o patch rolava a cada minuto enquanto sobrasse dado. Como testar: com o Continental marcado e um dado guardado, o log mostra "Continental: N dado(s) guardado(s); rolando antes das 12 h." e a proxima so vem 1h30 depois. Sem prova ao vivo.
+
 ## [0.153.0] - 2026-11-18
 
 - **App:** Treino: nova opcao **reviver no local com Resurrection scroll** (desligada por padrao). Morto, com pergaminho na mochila e perda de EXP na morte, o bot revive no lugar em 2 s pelo `XReviveDocument SendReviveRpc(ReviveOnTheSpot)`, o mesmo do botao, e nao perde EXP: reviver na cidade tirava 59,7 M do char principal Lv.87. Gasta 1 pergaminho por morte. Sem pergaminho, sem perda de EXP ou sem sucesso ate 45 s, revive na cidade como antes. O RevivePlace do auto-play continua na cidade: no local sem pergaminho o jogo abria a compra com Diamond e deixava o char 5 min morto. Como testar: marcar a opcao no Treino; na proxima morte o log mostra "reviver no local com Resurrection scroll (N na mochila; nao perde X de EXP)" e o char volta a cacar no mesmo lugar, com um pergaminho a menos. Sem prova ao vivo (precisa de uma morte).

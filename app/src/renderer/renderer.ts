@@ -86,6 +86,7 @@ declare global {
       runContinental: (cfg: ContinentalUiConfig) => Promise<{ ok: boolean; erro?: string; restart?: boolean }>;
       stopContinental: () => Promise<void>;
       chestLeft: () => Promise<number | null>;
+      continentalDice: () => Promise<number | null>;
       aiGet: () => Promise<{ settings: AiSettingsUi; hasKey: boolean }>;
       aiSet: (s: AiSettingsUi, key?: string) => Promise<{ ok: boolean; erro?: string; settings?: AiSettingsUi; hasKey?: boolean }>;
       aiSnapshot: (appInfo: AiAppInfo) => Promise<Record<string, unknown>>;
@@ -1665,6 +1666,32 @@ function contDue(now = Date.now()): boolean {
   }
 }
 
+// Dado guardado antes das 12 h tambem roda (1 dado a cada ~1h30, ate 10), com
+// pelo menos esse intervalo desde a ultima rodada: uma rodada que deixa dado
+// sobrando nao repete a cada minuto.
+const CONT_DICE_GAP_MS = 90 * 60 * 1000;
+
+function contLastAt(): number {
+  try {
+    return Number(localStorage.getItem("contLastAt") ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+function markContRun(): void {
+  try {
+    localStorage.setItem("contLastAt", String(Date.now()));
+  } catch {
+    /* sem storage: o intervalo dos dados nao vale ate a proxima rodada */
+  }
+}
+
+// Rodada agendada, por dado guardado ou pelo botao: marca a proxima.
+async function runContinentalRound(): Promise<void> {
+  setContNext((await runContinentalSafely()) ? CONT_EVERY_MS : CONT_RETRY_MS);
+}
+
 function setContNext(ms: number): void {
   try {
     localStorage.setItem("contNextAt", String(Date.now() + ms));
@@ -1719,6 +1746,7 @@ let contAtSpot = false;
 async function runContinentalSafely(): Promise<boolean> {
   if (contBusy) return false;
   contBusy = true;
+  markContRun();
   let resume = false;
   try {
     if (trainRunning) {
@@ -1741,11 +1769,17 @@ async function runContinentalSafely(): Promise<boolean> {
 // Agenda: com o Treino marcado, o Continental espera ele comecar e rola no ponto
 // com a caca do jogo ligada (runContinentalSafely).
 async function maybeRunContinental(): Promise<void> {
-  if (!polling || !isChecked("act-cont") || !contDue() || contBusy || watchdogBusy || loggingIn) return;
+  if (!polling || !isChecked("act-cont") || contBusy || watchdogBusy || loggingIn) return;
   // Treino marcado e ainda comecando: espera ele subir. Treino ja concluido
   // (limite de mortes, meta) deixou o char na cidade: roda direto.
   if (isChecked("act-train") && !trainRunning && activitiesRunning) return;
-  setContNext((await runContinentalSafely()) ? CONT_EVERY_MS : CONT_RETRY_MS);
+  if (!contDue()) {
+    if (Date.now() - contLastAt() < CONT_DICE_GAP_MS) return;
+    const dice = await window.sro.continentalDice().catch(() => null);
+    if (!dice || dice <= 0) return;
+    log(`Continental: ${dice} dado(s) guardado(s); rolando antes das 12 h.`);
+  }
+  await runContinentalRound();
 }
 
 // Passada so de baus entre as rodadas de dado: pega o pronto e comeca o proximo.
@@ -3049,6 +3083,12 @@ function wire(): void {
   $("btn-ce-save").addEventListener("click", () => {
     saveContConfig();
     log("config do Continental Exploration salva.");
+  });
+  $("btn-ce-run").addEventListener("click", () => {
+    if (contBusy) return log("Continental ja esta rodando.");
+    if (!polling) return log("Continental: inicie o bot antes de rolar.");
+    log("Continental: rodada pedida no botao.");
+    void runContinentalRound().catch((e) => log(`Continental falhou: ${String(e)}`));
   });
 
   document.querySelectorAll<HTMLElement>(".tab").forEach((tab) => {

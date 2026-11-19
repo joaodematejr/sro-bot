@@ -42,6 +42,7 @@ contextBridge.exposeInMainWorld("sro", {
   }) => ipcRenderer.invoke("engine:continental", cfg),
   stopContinental: () => ipcRenderer.invoke("engine:continentalstop"),
   chestLeft: () => ipcRenderer.invoke("engine:chestleft"),
+  continentalDice: () => ipcRenderer.invoke("engine:continentaldice"),
   switchChar: (name: string) => ipcRenderer.invoke("engine:switchchar", name),
   mainChar: () => ipcRenderer.invoke("engine:mainchar"),
   isChar: (entry: string) => ipcRenderer.invoke("engine:ischar", entry),
