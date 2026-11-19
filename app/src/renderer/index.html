@@ -377,6 +377,30 @@
               <div class="panel p-4 space-y-3">
                 <div class="flex items-center justify-between">
                   <div>
+                    <div class="text-sm font-semibold">Sekhmet War <span class="text-xs text-muted font-normal">(World Boss, 20:30 do servidor)</span></div>
+                    <div class="text-xs text-muted">quando a Sekhmet War abre: sai da party, entra na arena, liga o auto-play e compra os buffs por gold escolhidos. No fim da luta sai da arena e o Treino volta. Uma vez por dia</div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer select-none"><input type="checkbox" id="act-sekhmet" class="accent-gold w-4 h-4" /> Ativa</label>
+                    <span id="sw-status" class="pill bg-ink-600 text-muted">parado</span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-300">
+                  <label class="flex items-center gap-2">Buffs por gold
+                    <select id="sw-buffs" class="bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100">
+                      <option value="0" selected>Nenhum</option>
+                      <option value="1">1 buff (20 mil gold)</option>
+                      <option value="3">3 buffs (60 mil gold)</option>
+                      <option value="5">5 buffs (100 mil gold)</option>
+                      <option value="10">10 buffs (200 mil gold)</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="text-xs text-muted">só gasta gold nos buffs, nunca Silk; sai de party antes de entrar</div>
+              </div>
+              <div class="panel p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
                     <div class="text-sm font-semibold">Baús de atividade diária</div>
                     <div class="text-xs text-muted">pega os baús de 30, 60, 90, 120 e 150 pontos assim que liberam (confere a cada 15 min, com a caça ligada); os pontos zeram às 18:00</div>
                   </div>

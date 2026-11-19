@@ -602,6 +602,24 @@ carregar antes de despejar.
   = 20000, conta em `get_EncourageCount`, limite `GetMaxEncourageTimes` = 10. O 1
   e Silk (`ReqEncourageTwo`): nunca.
 
+## Sekhmet War / World Boss (2026-11-19)
+
+Ideia e primeiro mapeamento de um contribuidor (patch da 0.154.0); conferido no
+codigo do cliente e ao vivo so com leitura (evento fechado).
+
+- Aberto: `XActivityDocument IsMulActivityOpening:524` (`XSys_Activity_WorldBoss`),
+  verdadeiro em Open ou Prepare. Fechado lido `false`; `MainInterfaceState`,
+  `_BossHP` e `isWin` tambem 0 fora do evento.
+- Arena: cena `XGlobalConfig GetInt:"WorldBossSceneID"` = 2200 (SceneType
+  SCENE_WORLDBOSS). Entrar: `XWorldBossDocument ReqEnterWorldBossScene` (segura 1 s
+  entre pedidos).
+- Buff: `ReqEncourage` (`AddTempAttr` type 0) e o gold, `WorldBossConsume` = 20000;
+  conta em `_EncourageCount`. `ReqEncourageTwo` e o da guilda/Silk: nunca.
+- Fim: `OnWorldBossEnd` liga `isEnd` e `_WorldBossEnd` e desliga a IA do char;
+  `isEnd` zera ao entrar na arena (o `isWin` fica da luta anterior). Sair:
+  `ReqQutiScene` (nome do jogo), o mesmo do "continuar" do `XWorldBossResultView`.
+- `ReqBattleInfo`: pede a vida do boss e o ranking da luta.
+
 ## Guild Store (2026-11-11)
 
 - E a loja generica (`XNormalShopDocument`) no sistema `XSys_Mall_Guild` (324),

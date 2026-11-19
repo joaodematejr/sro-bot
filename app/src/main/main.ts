@@ -38,6 +38,8 @@ import type { GuildConfig } from "../controller/guild";
 import { runGuild, stopGuild } from "./guild";
 import type { GuildBossConfig } from "../controller/guildboss";
 import { isGuildBossOpen, isInGuildBossArena, runGuildBoss, stopGuildBoss } from "./guildboss";
+import type { SekhmetConfig } from "../controller/sekhmet";
+import { isInSekhmetArena, isSekhmetOpen, runSekhmet, stopSekhmet } from "./sekhmet";
 import type { CardAlbumConfig } from "../controller/cardalbum";
 import { getLastAlbumSnapshot, previewCardAlbum, runCardAlbum, setCardAlbumDir, stopCardAlbum } from "./cardalbum";
 import { runActChests } from "./actchest";
@@ -434,6 +436,20 @@ ipcMain.handle("engine:guildbossarena", async () => isInGuildBossArena("127.0.0.
 
 ipcMain.handle("engine:guildbossstop", async () => {
   stopGuildBoss();
+});
+
+// Sekhmet War (World Boss): entrada, saida de party, buffs por gold e saida no fim.
+ipcMain.handle("engine:sekhmet", async (_e, cfg: SekhmetConfig) => {
+  const push = (m: string) => win?.webContents.send("sro:log", "[sekhmet] " + m);
+  return runSekhmet("127.0.0.1", HOST_PORT, cfg, push);
+});
+
+ipcMain.handle("engine:sekhmetopen", async () => isSekhmetOpen("127.0.0.1", HOST_PORT));
+
+ipcMain.handle("engine:sekhmetarena", async () => isInSekhmetArena("127.0.0.1", HOST_PORT));
+
+ipcMain.handle("engine:sekhmetstop", async () => {
+  stopSekhmet();
 });
 
 ipcMain.handle("engine:continentalstop", async () => {
