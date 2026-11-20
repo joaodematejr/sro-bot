@@ -611,6 +611,9 @@ carregar antes de despejar.
   e lido: o aviso confiavel e o `BattleMain NoticeTime` (float, diferente de 0 durante
   a notice). Na arena o ENTS e o PLYR deram o char e o boss em (0, 1): a posicao ali
   pode nao ser confiavel.
+- Berserk e Devil: os mesmos botoes da `BattleMain` do Treino; no fim do evento o
+  `m_NasrunBtn` estava visivel no mapa e o `m_BerserkerBtn` nao (barra vazia). Uso na
+  arena sem prova ao vivo.
 
 ## Sekhmet War / World Boss (2026-11-19)
 
