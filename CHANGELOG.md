@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **Engine:** a posicao do char e dos monstros (`_correctedPosition` e `_next_pos` do `XEntity`) agora e achada pelo nome do campo, nao pelo offset fixo. Na atualizacao do jogo de 2026-11-20 o layout mudou e o 0x204 fixo passou a ler (0, y, 1) pra todo mundo: o Treino via o char longe do ponto e nao religava a caca (char parado no ponto, com monstro em volta), e o mapa e a arena do Guild Boss liam tudo em (0, 1). O offset antigo fica so de reserva. Como testar: com o jogo aberto pelo app nesta versao, o PLYR devolve `corrected` igual as coordenadas do minimapa (ex.: 1314,1200 no North Taklamakan) e o Treino volta a cacar no ponto.
+
 ## [0.154.0] - 2026-11-19
 
 - **App:** **Sekhmet War** (World Boss, 20:30 do servidor), atividade nova e desligada por padrao. Quando abre (`XActivityDocument IsMulActivityOpening` 524): para o loop do Treino, sai da party, entra na arena (cena 2200), liga o auto-play e compra os buffs por gold escolhidos (padrao nenhum; 20 mil cada, nunca o de Silk). No fim (`isEnd`) sai da arena, e o Treino so volta com o char fora dela. Uma vez por dia do jogo; o Guild Boss e o Qigong esperam ela terminar. Ideia de um contribuidor (patch da 0.154.0), refeita no molde do Guild Boss: o patch entrava de novo a cada 10 s depois de sair, mandava pedido de batalha em cada leitura e pausava o Treino pela ida pra cidade. Como testar: marcar "Ativa" no card; as 20:30 do servidor o log mostra "Sekhmet War aberta: entrando.", o char luta e no fim aparece "saiu da arena; fim da luta." e o Treino volta. Sem prova ao vivo.

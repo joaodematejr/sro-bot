@@ -605,6 +605,22 @@ void* safe_class_of(void* obj) {
     return c;
 }
 
+// Offset de um Vector3 do XEntity achado pelo nome, com cache. A atualizacao do jogo
+// de 2026-11-20 mudou o layout: o 0x204 fixo passou a ler (0, y, 1) em todo
+// mundo, e o Treino via o char longe do ponto. O fixo fica so de reserva. Requer
+// FaultGuard ativo.
+size_t entity_vec_off(void* entity, const char* name, size_t fallback, size_t& cache) {
+    if (cache) return cache;
+    void* fi = plausible_obj(entity) ? find_field_in_chain(safe_class_of(entity), name) : nullptr;
+    if (!fi) return fallback;
+    cache = g_api.field_get_offset(fi);
+    return cache;
+}
+
+size_t g_off_corrected = 0, g_off_next = 0;
+size_t corrected_pos_off(void* e) { return entity_vec_off(e, "_correctedPosition", OFF_XENTITY_CORRECTED_POS, g_off_corrected); }
+size_t next_pos_off(void* e) { return entity_vec_off(e, "_next_pos", OFF_XENTITY_NEXT_POS, g_off_next); }
+
 bool field_is_string(void* fi) {
     if (!g_api.field_get_type || !g_api.type_get_name) return false;
     char* tn = g_api.type_get_name(g_api.field_get_type(fi));
@@ -782,8 +798,8 @@ std::string read_live_player(Il2CppApi& api, const void* img) {
         return "{\"ok\":false,\"erro\":\"jogador nulo (nao esta em mundo?)\"}";
 
     float cp[3] = {0, 0, 0}, np[3] = {0, 0, 0};
-    bool okc = safe_read(cp, (char*)player + OFF_XENTITY_CORRECTED_POS, sizeof(cp));
-    bool okn = safe_read(np, (char*)player + OFF_XENTITY_NEXT_POS, sizeof(np));
+    bool okc = safe_read(cp, (char*)player + corrected_pos_off(player), sizeof(cp));
+    bool okn = safe_read(np, (char*)player + next_pos_off(player), sizeof(np));
     LOG("player=%p corrected=(%.1f,%.1f,%.1f) next=(%.1f,%.1f,%.1f)", player,
         cp[0], cp[1], cp[2], np[0], np[1], np[2]);
 
@@ -2186,7 +2202,7 @@ std::string read_entities_json(float radius) {
     auto boxed_b = [](void* r) -> bool { uint8_t v = 0; if (r) safe_read(&v, (char*)r + 0x10, 1); return v != 0; };
     auto entity_id = [&](void* e) -> uint32_t { return (uint32_t)boxed_u64(invoke0(e, "get_ID")); };
     float me[3] = {0, 0, 0};
-    safe_read(me, (char*)player + OFF_XENTITY_CORRECTED_POS, sizeof(me));
+    safe_read(me, (char*)player + corrected_pos_off(player), sizeof(me));
     // Alvo do auto-play: XAIComponent._target (o _ai do jogador fica em +0xd8).
     uint32_t target = 0;
     void* ai = nullptr;
@@ -2212,7 +2228,7 @@ std::string read_entities_json(float radius) {
         void* e = nullptr;
         if (!safe_read(&e, (char*)items + 0x20 + (size_t)i * 8, sizeof(e)) || !plausible_obj(e) || e == player) continue;
         float p[3] = {0, 0, 0};
-        if (!safe_read(p, (char*)e + OFF_XENTITY_CORRECTED_POS, sizeof(p))) continue;
+        if (!safe_read(p, (char*)e + corrected_pos_off(e), sizeof(p))) continue;
         float dx = p[0] - me[0], dz = p[2] - me[2];
         if (dx * dx + dz * dz > radius * radius) continue;
         if (!type_off) {
