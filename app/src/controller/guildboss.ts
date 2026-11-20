@@ -29,6 +29,10 @@
 //   Fim          -> evento fechado (bCanFight falso) com o char ainda na arena:
 //                   XGuildDragonDocument ReqQuitScene (o XScene ReqLeaveScene).
 //   Tela de fim  -> LevelRewardGuildBossHandler OnContinueClick (sem prova ao vivo).
+//   Morte        -> na arena nao tira EXP e o jogo revive no lugar em ~20 s (ao vivo
+//                   em 2026-11-20). Char fraco pro boss (Lv.87 contra o JeonUk Lv.155)
+//                   morre a cada ~35 s por golpe comum; maxDeaths sai da arena depois
+//                   de N mortes pra voltar ao Treino.
 
 export const SCENE_TYPE_GUILD_BOSS = 11;
 export const SCENE_TYPE_GUILD_HALL = 10;
@@ -65,12 +69,17 @@ export const SAFE_MARGIN = 1.5;
 // Fica no circulo ate esse tempo depois do ultimo aviso visto (a notice dura 4 s e
 // o golpe vem depois dela); passou, religa o auto-play e volta pro boss.
 export const DODGE_HOLD_MS = 10_000;
+// Nova tentativa de sair da arena se a cena nao mudou.
+export const LEAVE_RETRY_MS = 10_000;
+export const LEAVE_MAX_TRIES = 3;
 
 export interface GuildBossConfig {
   enabled: boolean;
   buffs?: number; // buffs de ataque por gold a comprar na arena (0 = nenhum; padrao 0)
   dodgeSupreme: boolean; // corre pra safe zone no aviso do golpe forte
   autoFight: boolean; // liga o auto-play dentro da arena
+  maxDeaths?: number; // sai da arena depois de N mortes (0 ou ausente = fica ate o fim)
+  berserk?: boolean; // Berserk e Devil na arena (ligado se ausente); o Treino, que os usa, fica parado
 }
 
 export const DEFAULT_GUILD_BOSS_CONFIG: GuildBossConfig = {
@@ -104,6 +113,7 @@ export interface GuildBossSnapshot {
   rewardVisible: boolean;
   dead: boolean;
   autoPlay: boolean;
+  inCombat?: boolean;
 }
 
 export interface GuildBossMemory {
@@ -112,7 +122,10 @@ export interface GuildBossMemory {
   lastMoveAt: number;
   leftTeam: boolean;
   rewardTried: boolean;
-  leaveTried: boolean;
+  leaveTries: number;
+  lastLeaveAt: number;
+  deaths: number; // mortes nesta arena
+  wasDead: boolean;
   buffTries: number;
   lastBuffAt: number;
   lastScriptCount: number; // -1 = ainda nao lido
@@ -126,7 +139,10 @@ export function newGuildBossMemory(): GuildBossMemory {
     lastMoveAt: -Infinity,
     leftTeam: false,
     rewardTried: false,
-    leaveTried: false,
+    leaveTries: 0,
+    lastLeaveAt: -Infinity,
+    deaths: 0,
+    wasDead: false,
     lastScriptCount: -1,
     dodgeUntil: -Infinity,
     buffTries: 0,
@@ -145,6 +161,12 @@ export function trackGuildBossWarning(m: GuildBossMemory, s: GuildBossSnapshot |
     lastScriptCount: s.scriptCount ?? m.lastScriptCount,
     dodgeUntil: s.noticeOn === true || newNotice ? Math.max(m.dodgeUntil, now + DODGE_HOLD_MS) : m.dodgeUntil,
   };
+}
+
+// Conta as mortes na arena (a passagem de vivo pra morto).
+export function trackGuildBossDeath(m: GuildBossMemory, s: GuildBossSnapshot | null): GuildBossMemory {
+  if (!s?.inBossScene || s.dead === m.wasDead) return m;
+  return { ...m, wasDead: s.dead, deaths: s.dead ? m.deaths + 1 : m.deaths };
 }
 
 export type GuildBossStep =
@@ -193,11 +215,18 @@ export function nextGuildBossStep(s: GuildBossSnapshot | null, cfg: GuildBossCon
     if (s.rewardVisible && !m.rewardTried)
       return { kind: "act", id: "reward", name: "sair da arena do Guild Boss e receber recompensas", tag: "SKIL", body: EXIT_REWARD_BODY };
     if (s.dead) return { kind: "wait", reason: "char abatido na arena do Boss; aguardando..." };
-    // Evento fechado com o char ainda na arena (em 2026-11-18 ficou la depois do fim).
-    if (!s.canFight) {
-      if (!m.leaveTried)
-        return { kind: "act", id: "leave-arena", name: "evento fechado: saindo da arena", tag: "SKIL", body: LEAVE_ARENA_BODY };
-      return { kind: "wait", reason: "evento fechado; esperando sair da arena..." };
+    // Evento fechado com o char ainda na arena (em 2026-11-18 ficou la depois do fim),
+    // ou o limite de mortes: sai depois de renascer, antes de religar o auto-play.
+    const maxDeaths = Math.max(0, Math.floor(cfg.maxDeaths ?? 0));
+    const gaveUp = maxDeaths > 0 && m.deaths >= maxDeaths;
+    if (!s.canFight || gaveUp) {
+      if (m.leaveTries < LEAVE_MAX_TRIES && now - m.lastLeaveAt >= LEAVE_RETRY_MS) {
+        const name = s.canFight ? `${m.deaths} mortes na arena: saindo e voltando pro Treino` : "evento fechado: saindo da arena";
+        return { kind: "act", id: "leave-arena", name, tag: "SKIL", body: LEAVE_ARENA_BODY };
+      }
+      if (!s.canFight) return { kind: "wait", reason: "evento fechado; esperando sair da arena..." };
+      // Saida recusada: continua lutando em vez de ficar parado na arena.
+      if (m.leaveTries < LEAVE_MAX_TRIES) return { kind: "wait", reason: "saindo da arena do Guild Boss..." };
     }
 
     if (cfg.dodgeSupreme && now < m.dodgeUntil) {
@@ -249,7 +278,7 @@ export function afterGuildBossStep(m: GuildBossMemory, step: GuildBossStep, now:
   if (step.id === "enter") return { ...m, enterTries: m.enterTries + 1, lastEnterAt: now };
   if (step.id === "leave-team") return { ...m, leftTeam: true };
   if (step.id === "reward") return { ...m, rewardTried: true };
-  if (step.id === "leave-arena") return { ...m, leaveTried: true };
+  if (step.id === "leave-arena") return { ...m, leaveTries: m.leaveTries + 1, lastLeaveAt: now };
   if (step.id === "buff") return { ...m, buffTries: m.buffTries + 1, lastBuffAt: now };
   return m;
 }
@@ -336,5 +365,11 @@ export async function readGuildBossSnapshot(q: EngineQuery, zones: SafeZone[]): 
     rewardVisible: inBossScene && (num(await q("GETP", "XLevelRewardView _DlgHandler")) ?? 0) !== 0,
     dead: player.dead === true,
     autoPlay: player.autoPlayOn === true,
+    inCombat: player.inCombat === true,
   };
+}
+
+// Berserk e Devil so lutando: vivo, em combate, com o auto-play e fora da fuga.
+export function guildBossBoostDue(s: GuildBossSnapshot | null, cfg: GuildBossConfig, m: GuildBossMemory, now: number): boolean {
+  return cfg.berserk !== false && !!s?.inBossScene && s.canFight && !s.dead && s.autoPlay && s.inCombat === true && now >= m.dodgeUntil;
 }
