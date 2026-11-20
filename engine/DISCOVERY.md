@@ -609,6 +609,19 @@ carregar antes de despejar.
   ReqEncourage()` (`AddTempAttr` type 1), custo `XGlobalConfig GuildBossConsume`
   = 20000, conta em `get_EncourageCount`, limite `GetMaxEncourageTimes` = 10. O 1
   e Silk (`ReqEncourageTwo`): nunca.
+- Morte na arena (ao vivo em 2026-11-20, 12:06 a 12:13 UTC, so leitura): nao tira EXP
+  (`exp` igual antes e depois de duas mortes) e o jogo revive no lugar em ~20 s, com o
+  auto-play desligado. O char Lv.87 (18,4 mil de HP) morria a cada ~35 s por golpes
+  comuns de ~5 mil do JeonUk Lv.155, sem notice antes (`NoticeTime` 0, script so com
+  NpcPopSpeek). A recompensa tem ranking pessoal de dano (`GuildBossRoleReward`).
+- O Notice do script termina no mesmo frame e o comando seguinte entra no proximo
+  (`XLevelScriptMgr Update` roda um por frame), entao `_currentCmd cmd` = 6 quase nunca
+  e lido: o aviso confiavel e o `BattleMain NoticeTime` (float, diferente de 0 durante
+  a notice). Na arena o ENTS e o PLYR deram o char e o boss em (0, 1): a posicao ali
+  pode nao ser confiavel.
+- Berserk e Devil: os mesmos botoes da `BattleMain` do Treino; no fim do evento o
+  `m_NasrunBtn` estava visivel no mapa e o `m_BerserkerBtn` nao (barra vazia). Uso na
+  arena sem prova ao vivo.
 
 ## Sekhmet War / World Boss (2026-11-19)
 
