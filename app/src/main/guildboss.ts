@@ -13,6 +13,7 @@ import {
   readGuildBossSnapshot,
   readSafeZones,
   type SafeZone,
+  trackGuildBossDeath,
   trackGuildBossWarning,
 } from "../controller/guildboss";
 import { queryPlayer, sendCommand } from "./engine";
@@ -102,6 +103,12 @@ export async function runGuildBoss(
     }
 
     const now = Date.now();
+    const deathsWas = mem.deaths;
+    mem = trackGuildBossDeath(mem, s);
+    if (mem.deaths > deathsWas) {
+      const max = cfg.maxDeaths ?? 0;
+      log(`Guild Boss: morte ${mem.deaths}${max > 0 ? ` de ${max}` : ""} na arena`);
+    }
     const dodgeWas = mem.dodgeUntil;
     mem = trackGuildBossWarning(mem, s, now);
     if (cfg.dodgeSupreme && dodgeWas < now && mem.dodgeUntil > now) log("Guild Boss: aviso do golpe forte do boss; indo pra safe zone");

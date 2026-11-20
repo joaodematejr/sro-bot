@@ -368,6 +368,14 @@
                     </select>
                   </label>
                   <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="gb-dodge" class="accent-gold w-4 h-4" checked /> Desviar na Safe Zone (golpe supremo)</label>
+                  <label class="flex items-center gap-2">Sair da arena depois de
+                    <select id="gb-max-deaths" class="bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100">
+                      <option value="1">1 morte</option>
+                      <option value="3" selected>3 mortes</option>
+                      <option value="5">5 mortes</option>
+                      <option value="0">nunca (fica até o fim)</option>
+                    </select>
+                  </label>
                 </div>
                 <div class="flex items-center gap-3">
                   <button id="btn-gb-save" class="btn btn-gold">Salvar config</button>

@@ -17,6 +17,8 @@ import {
   HUNT_OFF_BODY,
   HUNT_ON_BODY,
   LEAVE_ARENA_BODY,
+  LEAVE_MAX_TRIES,
+  LEAVE_RETRY_MS,
   LEAVE_TEAM_BODY,
   LEVEL_CMD_NOTICE,
   MOVE_RETRY_MS,
@@ -25,6 +27,7 @@ import {
   nextGuildBossStep,
   readSafeZones,
   type SafeZone,
+  trackGuildBossDeath,
   trackGuildBossWarning,
 } from "../guildboss";
 
@@ -200,4 +203,37 @@ test("guild boss: buff de gold so escolhido, lutando, ate o pedido ou o limite d
   const dodging = { ...newGuildBossMemory(), dodgeUntil: T + 5000 };
   const d = nextGuildBossStep(a(), bc, dodging, T);
   assert.equal(d.kind === "act" && d.body, HUNT_OFF_BODY);
+});
+
+test("guild boss: limite de mortes sai da arena depois de renascer; sem limite fica", () => {
+  const dc = { ...cfg, maxDeaths: 3 };
+  let m = newGuildBossMemory();
+  // Cada passagem de vivo pra morto conta uma; leitura repetida nao.
+  for (let i = 0; i < 3; i++) {
+    m = trackGuildBossDeath(m, arena({ dead: true }));
+    m = trackGuildBossDeath(m, arena({ dead: true }));
+    if (i < 2) m = trackGuildBossDeath(m, arena({ autoPlay: false }));
+  }
+  assert.equal(m.deaths, 3);
+  // Fora da arena nao conta.
+  assert.equal(trackGuildBossDeath(newGuildBossMemory(), snap({ dead: true })).deaths, 0);
+  // Morto espera renascer; renascido sai antes de religar o auto-play.
+  assert.equal(nextGuildBossStep(arena({ dead: true, autoPlay: false }), dc, m, T).kind, "wait");
+  m = trackGuildBossDeath(m, arena({ autoPlay: false }));
+  const leave = nextGuildBossStep(arena({ autoPlay: false }), dc, m, T);
+  assert.equal(leave.kind === "act" && leave.body, LEAVE_ARENA_BODY);
+  assert.match(leave.kind === "act" ? leave.name : "", /3 mortes/);
+  // Abaixo do limite, ou sem limite, religa o auto-play.
+  const two = { ...m, deaths: 2 };
+  assert.equal(nextGuildBossStep(arena({ autoPlay: false }), dc, two, T).kind === "act" && (nextGuildBossStep(arena({ autoPlay: false }), dc, two, T) as { body: string }).body, HUNT_ON_BODY);
+  const on = nextGuildBossStep(arena({ autoPlay: false }), cfg, m, T);
+  assert.equal(on.kind === "act" && on.body, HUNT_ON_BODY);
+  // Espera a cena mudar e tenta de novo; recusado demais, volta a lutar.
+  m = afterGuildBossStep(m, leave, T);
+  assert.equal(nextGuildBossStep(arena({ autoPlay: false }), dc, m, T + 1000).kind, "wait");
+  const again = nextGuildBossStep(arena({ autoPlay: false }), dc, m, T + LEAVE_RETRY_MS);
+  assert.equal(again.kind === "act" && again.body, LEAVE_ARENA_BODY);
+  for (let i = 1; i < LEAVE_MAX_TRIES; i++) m = afterGuildBossStep(m, leave, T);
+  const fight = nextGuildBossStep(arena({ autoPlay: false }), dc, m, T + 10 * LEAVE_RETRY_MS);
+  assert.equal(fight.kind === "act" && fight.body, HUNT_ON_BODY);
 });

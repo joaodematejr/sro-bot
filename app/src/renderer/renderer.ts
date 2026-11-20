@@ -787,6 +787,7 @@ interface GuildBossUiConfig {
   buffs: number;
   dodgeSupreme: boolean;
   autoFight: boolean;
+  maxDeaths: number;
 }
 
 function readGuildBossUi(): GuildBossUiConfig {
@@ -795,6 +796,7 @@ function readGuildBossUi(): GuildBossUiConfig {
     buffs: Number(($("gb-buffs") as HTMLSelectElement)?.value ?? "0") || 0,
     dodgeSupreme: isChecked("gb-dodge"),
     autoFight: true,
+    maxDeaths: Number(($("gb-max-deaths") as HTMLSelectElement)?.value ?? "3") || 0,
   };
 }
 
@@ -820,6 +822,11 @@ function loadGuildBossConfig(): void {
     if (typeof c.dodgeSupreme === "boolean") {
       const chk = $("gb-dodge") as HTMLInputElement;
       if (chk) chk.checked = c.dodgeSupreme;
+    }
+    // Config salva antes da opcao fica no padrao do card (3).
+    if (typeof c.maxDeaths === "number") {
+      const sel = $("gb-max-deaths") as HTMLSelectElement;
+      if (sel) sel.value = String(c.maxDeaths);
     }
   } catch {
     /* ignora */

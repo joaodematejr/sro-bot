@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** Guild Boss: opcao **sair da arena depois de N mortes** (padrao 3; 1, 3, 5 ou nunca). Na arena a morte nao tira EXP e o jogo revive no lugar em ~20 s, mas o char principal Lv.87 morria a cada ~35 s contra o JeonUk Lv.155 (ao vivo em 2026-11-20) e o Treino ficava parado a luta inteira. Agora o bot conta as mortes e, ao renascer depois da ultima, sai pelo `ReqQuitScene` (ate 3 pedidos, 10 s entre eles; recusado, volta a lutar) e o Treino volta. Como testar: no Guild Boss o log mostra "morte 1 de 3 na arena" ate "3 mortes na arena: saindo e voltando pro Treino" e o char sai da arena. Sem prova ao vivo.
+
 ## [0.154.0] - 2026-11-19
 
 - **App:** **Sekhmet War** (World Boss, 20:30 do servidor), atividade nova e desligada por padrao. Quando abre (`XActivityDocument IsMulActivityOpening` 524): para o loop do Treino, sai da party, entra na arena (cena 2200), liga o auto-play e compra os buffs por gold escolhidos (padrao nenhum; 20 mil cada, nunca o de Silk). No fim (`isEnd`) sai da arena, e o Treino so volta com o char fora dela. Uma vez por dia do jogo; o Guild Boss e o Qigong esperam ela terminar. Ideia de um contribuidor (patch da 0.154.0), refeita no molde do Guild Boss: o patch entrava de novo a cada 10 s depois de sair, mandava pedido de batalha em cada leitura e pausava o Treino pela ida pra cidade. Como testar: marcar "Ativa" no card; as 20:30 do servidor o log mostra "Sekhmet War aberta: entrando.", o char luta e no fim aparece "saiu da arena; fim da luta." e o Treino volta. Sem prova ao vivo.
