@@ -568,6 +568,14 @@ carregar antes de despejar.
 - Battle Pass (`XEternalPathwayDocument`): pegar pede `List<ItemRewardKey>` de
   gratis e pagos (`SendRequestReceiveReward`); nao feito.
 
+## Posicao do XEntity mudou de lugar (2026-11-20)
+
+- Depois da atualizacao do jogo de 2026-11-20 o offset fixo 0x204 do `_correctedPosition`
+  passou a ler (0, y, 1) pro char e pros monstros (char no ponto 1314,1200 do North
+  Taklamakan lido como (0, 45.4, 1)). Pelo nome o jogo responde certo: `GETP XEntityMgr
+  get_Player get_CorrectedPosition x` = 1314.03, `... z` = 1200.03. O engine agora acha
+  `_correctedPosition` e `_next_pos` pelo nome (`find_field_in_chain`), com cache.
+
 ## Guild Boss (2026-11-16)
 
 - E o `XGuildDragonDocument` (XSys_GuildDragon 85), nao o `XWorldBossDocument` (World
