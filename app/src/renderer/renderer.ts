@@ -788,6 +788,7 @@ interface GuildBossUiConfig {
   dodgeSupreme: boolean;
   autoFight: boolean;
   maxDeaths: number;
+  berserk: boolean;
 }
 
 function readGuildBossUi(): GuildBossUiConfig {
@@ -797,6 +798,7 @@ function readGuildBossUi(): GuildBossUiConfig {
     dodgeSupreme: isChecked("gb-dodge"),
     autoFight: true,
     maxDeaths: Number(($("gb-max-deaths") as HTMLSelectElement)?.value ?? "3") || 0,
+    berserk: isChecked("gb-berserk"),
   };
 }
 
@@ -824,6 +826,10 @@ function loadGuildBossConfig(): void {
       if (chk) chk.checked = c.dodgeSupreme;
     }
     // Config salva antes da opcao fica no padrao do card (3).
+    if (typeof c.berserk === "boolean") {
+      const chk = $("gb-berserk") as HTMLInputElement;
+      if (chk) chk.checked = c.berserk;
+    }
     if (typeof c.maxDeaths === "number") {
       const sel = $("gb-max-deaths") as HTMLSelectElement;
       if (sel) sel.value = String(c.maxDeaths);

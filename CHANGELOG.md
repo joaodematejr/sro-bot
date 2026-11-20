@@ -5,6 +5,7 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 ## [Nao lancado]
 
 - **App:** Guild Boss: opcao **sair da arena depois de N mortes** (padrao 3; 1, 3, 5 ou nunca). Na arena a morte nao tira EXP e o jogo revive no lugar em ~20 s, mas o char principal Lv.87 morria a cada ~35 s contra o JeonUk Lv.155 (ao vivo em 2026-11-20) e o Treino ficava parado a luta inteira. Agora o bot conta as mortes e, ao renascer depois da ultima, sai pelo `ReqQuitScene` (ate 3 pedidos, 10 s entre eles; recusado, volta a lutar) e o Treino volta. Como testar: no Guild Boss o log mostra "morte 1 de 3 na arena" ate "3 mortes na arena: saindo e voltando pro Treino" e o char sai da arena. Sem prova ao vivo.
+- **App:** Guild Boss: **Berserk e Devil na arena** (ligado por padrao, desligavel no card). Eles so rodavam no loop do Treino, que fica parado durante o Guild Boss, entao o char lutava sem os +100% de dano do Berserk. Mesmas regras do Treino: Berserk com a barra cheia, Devil uma vez por minuto, so vivo, em combate, com o auto-play e fora da fuga do golpe; nenhum gasta item. Como testar: com a barra do Berserk cheia na arena, o log mostra "Guild Boss: modo Berserk ativado (barra cheia)". Sem prova ao vivo.
 
 ## [0.154.0] - 2026-11-19
 

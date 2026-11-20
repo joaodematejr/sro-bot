@@ -1,10 +1,12 @@
 // Loop de execucao do Guild Boss. Mapeado 100% por metodos de engine, sem cliques
 // em coordenadas.
 
+import { BERSERK_CLICK, BERSERK_EVERY_MS, BERSERK_VISIBLE, DEVIL_CLICK, DEVIL_EVERY_MS } from "../controller/berserk";
 import {
   afterGuildBossStep,
   DEFAULT_GUILD_BOSS_SCENE,
   type GuildBossConfig,
+  guildBossBoostDue,
   guildBossOpenNow,
   HUNT_ON_BODY,
   inGuildBossArena,
@@ -66,6 +68,8 @@ export async function runGuildBoss(
   let wasInArena = false;
   let warnedNoWarning = false;
   let outsideReads = 0;
+  let nextBerserk = 0;
+  let nextDevil = 0;
   // Nunca deixa o char parado na arena com o auto-play desligado (a safe zone o desliga).
   const huntBackOn = async () => {
     const end = await queryPlayer(host, port).catch(() => null);
@@ -141,6 +145,22 @@ export async function runGuildBoss(
       lastWait = "";
       log(`Guild Boss: ${step.name}`);
       await q("MOVE", step.pos.map((n) => n.toFixed(2)).join(" "));
+    }
+
+    // Mais dano no boss, como no Treino: Berserk com a barra cheia e Devil a cada
+    // minuto (clicar em recarga nao faz nada). Nenhum dos dois gasta item.
+    if (step.kind === "wait" && guildBossBoostDue(s, cfg, mem, now)) {
+      if (now >= nextBerserk) {
+        nextBerserk = now + BERSERK_EVERY_MS;
+        if ((await q("GETP", BERSERK_VISIBLE)).bool === true) {
+          await q("SKIL", BERSERK_CLICK);
+          log("Guild Boss: modo Berserk ativado (barra cheia)");
+        }
+      }
+      if (now >= nextDevil) {
+        nextDevil = now + DEVIL_EVERY_MS;
+        await q("SKIL", DEVIL_CLICK);
+      }
     }
 
     await sleep(s?.inBossScene ? ARENA_TICK_MS : TICK_MS);

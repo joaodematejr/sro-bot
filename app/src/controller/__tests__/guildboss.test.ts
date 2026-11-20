@@ -13,6 +13,7 @@ import {
   ENTER_RETRY_MS,
   EXIT_REWARD_BODY,
   type GuildBossSnapshot,
+  guildBossBoostDue,
   guildBossOpenNow,
   HUNT_OFF_BODY,
   HUNT_ON_BODY,
@@ -236,4 +237,17 @@ test("guild boss: limite de mortes sai da arena depois de renascer; sem limite f
   for (let i = 1; i < LEAVE_MAX_TRIES; i++) m = afterGuildBossStep(m, leave, T);
   const fight = nextGuildBossStep(arena({ autoPlay: false }), dc, m, T + 10 * LEAVE_RETRY_MS);
   assert.equal(fight.kind === "act" && fight.body, HUNT_ON_BODY);
+});
+
+test("guild boss: Berserk e Devil so lutando na arena, fora da fuga, e desligaveis", () => {
+  const m = newGuildBossMemory();
+  assert.equal(guildBossBoostDue(arena({ inCombat: true }), cfg, m, T), true);
+  assert.equal(guildBossBoostDue(arena({ inCombat: true }), { ...cfg, berserk: false }, m, T), false);
+  assert.equal(guildBossBoostDue(arena({ inCombat: false }), cfg, m, T), false);
+  assert.equal(guildBossBoostDue(arena({ inCombat: true, dead: true }), cfg, m, T), false);
+  assert.equal(guildBossBoostDue(arena({ inCombat: true, autoPlay: false }), cfg, m, T), false);
+  assert.equal(guildBossBoostDue(arena({ inCombat: true, canFight: false }), cfg, m, T), false);
+  assert.equal(guildBossBoostDue(snap({ inCombat: true }), cfg, m, T), false);
+  assert.equal(guildBossBoostDue(arena({ inCombat: true }), cfg, { ...m, dodgeUntil: T + 1 }, T), false);
+  assert.equal(guildBossBoostDue(null, cfg, m, T), false);
 });

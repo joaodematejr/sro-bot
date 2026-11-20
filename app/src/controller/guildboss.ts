@@ -79,6 +79,7 @@ export interface GuildBossConfig {
   dodgeSupreme: boolean; // corre pra safe zone no aviso do golpe forte
   autoFight: boolean; // liga o auto-play dentro da arena
   maxDeaths?: number; // sai da arena depois de N mortes (0 ou ausente = fica ate o fim)
+  berserk?: boolean; // Berserk e Devil na arena (ligado se ausente); o Treino, que os usa, fica parado
 }
 
 export const DEFAULT_GUILD_BOSS_CONFIG: GuildBossConfig = {
@@ -112,6 +113,7 @@ export interface GuildBossSnapshot {
   rewardVisible: boolean;
   dead: boolean;
   autoPlay: boolean;
+  inCombat?: boolean;
 }
 
 export interface GuildBossMemory {
@@ -363,5 +365,11 @@ export async function readGuildBossSnapshot(q: EngineQuery, zones: SafeZone[]): 
     rewardVisible: inBossScene && (num(await q("GETP", "XLevelRewardView _DlgHandler")) ?? 0) !== 0,
     dead: player.dead === true,
     autoPlay: player.autoPlayOn === true,
+    inCombat: player.inCombat === true,
   };
+}
+
+// Berserk e Devil so lutando: vivo, em combate, com o auto-play e fora da fuga.
+export function guildBossBoostDue(s: GuildBossSnapshot | null, cfg: GuildBossConfig, m: GuildBossMemory, now: number): boolean {
+  return cfg.berserk !== false && !!s?.inBossScene && s.canFight && !s.dead && s.autoPlay && s.inCombat === true && now >= m.dodgeUntil;
 }
