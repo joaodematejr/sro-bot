@@ -533,7 +533,8 @@ void dump_raw(void* base, const char* label, size_t size, FILE* f) {
     }
 }
 
-// Offsets observados no dump.
+// Offsets observados no dump. Sao so reserva: o engine acha cada campo pelo nome
+// (entity_field_off), porque as atualizacoes do jogo mudam o layout.
 constexpr size_t OFF_ENTITYMGR_PLAYER = 0xf8;   // XEntityMgr.<Player>
 constexpr size_t OFF_XENTITY_CORRECTED_POS = 0x204;  // Vector3
 constexpr size_t OFF_XENTITY_NEXT_POS = 0x138;       // Vector3
@@ -544,8 +545,9 @@ constexpr size_t OFF_XOBJECT_ATTR = 0x18;            // XObject._attr
 // Campos em XPlayerAttributes.
 constexpr size_t OFF_ATTR_NAME = 0x80;    // Il2CppString
 constexpr size_t OFF_ATTR_LEVEL = 0x184;  // int
-constexpr size_t OFF_ATTR_EXP = 0x1d0;    // int
-constexpr size_t OFF_ATTR_MAXEXP = 0x1d8; // int
+constexpr size_t OFF_ATTR_EXP = 0x1d0;    // UInt64
+constexpr size_t OFF_ATTR_MAXEXP = 0x1d8; // UInt64
+constexpr size_t OFF_ATTR_IS_DEAD = 0x75; // bool
 
 // Le uma string Il2CppString (layout: len em +0x10, chars UTF-16 em +0x14).
 std::string read_il2cpp_string(void* s) {
@@ -608,7 +610,9 @@ void* safe_class_of(void* obj) {
     return c;
 }
 
-// Offset de um campo do XEntity achado pelo nome, com cache. A atualizacao do jogo
+// Offset de um campo achado pelo nome na cadeia de classes do objeto, com cache
+// (XEntity, XEntityMgr, XAttributes: o campo mora na classe base, entao o offset
+// vale pra todas as filhas). A atualizacao do jogo
 // de 2026-11-20 mudou o layout: o 0x204 fixo passou a ler (0, y, 1) em todo
 // mundo, e o Treino via o char longe do ponto. O _ai (0xd8 -> 0xe8), o _nav
 // (0xa8 -> 0xb8) e o _bInCombat (0x234 -> 0x244) andaram junto: o START so ligava
@@ -630,6 +634,17 @@ size_t next_pos_off(void* e) { return entity_field_off(e, "_next_pos", OFF_XENTI
 size_t combat_off(void* e) { return entity_field_off(e, "_bInCombat", OFF_XENTITY_IN_COMBAT, g_off_combat); }
 size_t ai_off(void* e, bool main = false) { return entity_field_off(e, "_ai", OFF_XENTITY_AI, g_off_ai, main); }
 size_t nav_off(void* e, bool main = false) { return entity_field_off(e, "_nav", OFF_XENTITY_NAV, g_off_nav, main); }
+
+// Os que nao mudaram em 2026-11-20, pelo nome tambem (o proximo hot update pode
+// mexer neles).
+size_t g_off_player = 0, g_off_attr = 0, g_off_level = 0, g_off_exp = 0, g_off_maxexp = 0, g_off_name = 0, g_off_dead = 0;
+size_t player_off(void* mgr) { return entity_field_off(mgr, "_003CPlayer_003Ek__BackingField", OFF_ENTITYMGR_PLAYER, g_off_player); }
+size_t attr_off(void* e, bool main = false) { return entity_field_off(e, "_attr", OFF_XOBJECT_ATTR, g_off_attr, main); }
+size_t level_off(void* a) { return entity_field_off(a, "_level", OFF_ATTR_LEVEL, g_off_level); }
+size_t exp_off(void* a) { return entity_field_off(a, "_003CExp_003Ek__BackingField", OFF_ATTR_EXP, g_off_exp); }
+size_t maxexp_off(void* a) { return entity_field_off(a, "_003CMaxExp_003Ek__BackingField", OFF_ATTR_MAXEXP, g_off_maxexp); }
+size_t name_off(void* a) { return entity_field_off(a, "_name", OFF_ATTR_NAME, g_off_name); }
+size_t dead_off(void* a) { return entity_field_off(a, "_is_dead", OFF_ATTR_IS_DEAD, g_off_dead); }
 
 bool field_is_string(void* fi) {
     if (!g_api.field_get_type || !g_api.type_get_name) return false;
@@ -737,7 +752,7 @@ void dump_attr_values(Il2CppApi& api, void* attr) {
 
     // Nome (string).
     void* nameptr = nullptr;
-    if (safe_read(&nameptr, (char*)attr + 0x80, sizeof(nameptr))) {
+    if (safe_read(&nameptr, (char*)attr + name_off(attr), sizeof(nameptr))) {
         std::string nm = read_il2cpp_string(nameptr);
         std::fprintf(f, "NAME: %s\n", nm.c_str());
     }
@@ -803,7 +818,7 @@ std::string read_live_player(Il2CppApi& api, const void* img) {
 
     FaultGuard guard;
     void* player = nullptr;
-    if (!safe_read(&player, (char*)mgr + OFF_ENTITYMGR_PLAYER, sizeof(player)) ||
+    if (!safe_read(&player, (char*)mgr + player_off(mgr), sizeof(player)) ||
         !plausible(player))
         return "{\"ok\":false,\"erro\":\"jogador nulo (nao esta em mundo?)\"}";
 
@@ -816,14 +831,15 @@ std::string read_live_player(Il2CppApi& api, const void* img) {
     (void)okn;
     // Atributos diretos (nivel, exp, nome) a partir de XObject._attr.
     void* attr = nullptr;
-    int level = 0, exp = 0, maxexp = 0;
+    int level = 0;
+    uint64_t exp = 0, maxexp = 0;
     std::string name;
-    if (safe_read(&attr, (char*)player + OFF_XOBJECT_ATTR, sizeof(attr)) && plausible_obj(attr)) {
-        safe_read(&level, (char*)attr + OFF_ATTR_LEVEL, 4);
-        safe_read(&exp, (char*)attr + OFF_ATTR_EXP, 4);
-        safe_read(&maxexp, (char*)attr + OFF_ATTR_MAXEXP, 4);
+    if (safe_read(&attr, (char*)player + attr_off(player), sizeof(attr)) && plausible_obj(attr)) {
+        safe_read(&level, (char*)attr + level_off(attr), 4);
+        safe_read(&exp, (char*)attr + exp_off(attr), 8);
+        safe_read(&maxexp, (char*)attr + maxexp_off(attr), 8);
         void* nameptr = nullptr;
-        if (safe_read(&nameptr, (char*)attr + OFF_ATTR_NAME, sizeof(nameptr)))
+        if (safe_read(&nameptr, (char*)attr + name_off(attr), sizeof(nameptr)))
             name = read_il2cpp_string(nameptr);
     }
 
@@ -850,9 +866,9 @@ std::string read_live_player(Il2CppApi& api, const void* img) {
         }
     }
 
-    // Estados: _is_dead (XPlayerAttributes +0x75), _bInCombat (XEntity, pelo nome).
+    // Estados: _is_dead (XAttributes) e _bInCombat (XEntity), pelo nome.
     unsigned char deadB = 0, combatB = 0;
-    if (plausible_obj(attr)) safe_read(&deadB, (char*)attr + 0x75, 1);
+    if (plausible_obj(attr)) safe_read(&deadB, (char*)attr + dead_off(attr), 1);
     safe_read(&combatB, (char*)player + combat_off(player), 1);
     bool dead = deadB != 0;
     bool inCombat = combatB != 0;
@@ -894,12 +910,12 @@ std::string read_live_player(Il2CppApi& api, const void* img) {
 
     char head[512];
     std::snprintf(head, sizeof(head),
-                  "{\"ok\":true,\"player\":\"%p\",\"level\":%d,\"exp\":%d,\"maxExp\":%d,"
+                  "{\"ok\":true,\"player\":\"%p\",\"level\":%d,\"exp\":%llu,\"maxExp\":%llu,"
                   "\"hp\":%d,\"maxHp\":%d,\"mp\":%d,\"maxMp\":%d,"
                   "\"dead\":%s,\"inCombat\":%s,\"autoPlayOn\":%s,\"aiFighting\":%s,"
                   "\"deathEvents\":%d,\"kills\":%d,"
                   "\"corrected\":[%.2f,%.2f,%.2f],\"okc\":%s,\"name\":\"",
-                  player, level, exp, maxexp, hp, maxHp, mp, maxMp,
+                  player, level, (unsigned long long)exp, (unsigned long long)maxexp, hp, maxHp, mp, maxMp,
                   dead ? "true" : "false", inCombat ? "true" : "false",
                   autoPlay ? "true" : "false", aiFight ? "true" : "false",
                   g_death_events.load(std::memory_order_relaxed), g_kills.load(std::memory_order_relaxed),
@@ -928,7 +944,7 @@ void* current_player(Il2CppApi& api, const void* img) {
     if (!plausible_obj(mgr)) return nullptr;
     FaultGuard guard;
     void* player = nullptr;
-    if (!safe_read(&player, (char*)mgr + OFF_ENTITYMGR_PLAYER, sizeof(player)) ||
+    if (!safe_read(&player, (char*)mgr + player_off(mgr), sizeof(player)) ||
         !plausible_obj(player))
         return nullptr;
     return player;
@@ -1080,7 +1096,7 @@ std::string do_attr_dump() {
     void* attr = nullptr;
     {
         FaultGuard guard;
-        safe_read(&attr, (char*)player + 0x18, sizeof(attr));
+        safe_read(&attr, (char*)player + attr_off(player), sizeof(attr));
     }
     if (!plausible_obj(attr) || !g_api.object_get_class || !g_api.class_get_method_from_name ||
         !g_api.runtime_invoke)
@@ -1539,7 +1555,7 @@ void exec_auto_main(const Action& act) {
             const void* me = acls ? g_api.class_get_method_from_name(acls, "SetAutoEnable", 2) : nullptr;
             if (me) { uint8_t o = 1; void* p[2] = {&o, &o}; void* e = nullptr; g_api.runtime_invoke(me, ai, p, &e); }
         }
-        void* attr = *(void**)((char*)player + 0x18);
+        void* attr = *(void**)((char*)player + attr_off(player, true));
         if (plausible_obj(attr)) {
             void* acls = g_api.object_get_class(attr);
             const void* ma = acls ? g_api.class_get_method_from_name(acls, "set_AutoPlayOn", 1) : nullptr;
@@ -1553,7 +1569,7 @@ void exec_auto_main(const Action& act) {
     // Provado ao vivo: so o SetAutoEnable(0,0) trava movimento e casts; limpar
     // tambem o AutoPlayOn deixa o estado consistente.
     if (method == 5) {
-        void* attr = *(void**)((char*)player + 0x18);
+        void* attr = *(void**)((char*)player + attr_off(player, true));
         if (plausible_obj(attr)) {
             void* acls = g_api.object_get_class(attr);
             const void* ma = acls ? g_api.class_get_method_from_name(acls, "set_AutoPlayOn", 1) : nullptr;
@@ -1576,7 +1592,7 @@ void exec_auto_main(const Action& act) {
 
     // method 1 age no _attr (XPlayerAttributes, 0x18); os outros no _ai (pelo nome).
     if (method == 1) {
-        void* attr = *(void**)((char*)player + 0x18);  // thread principal: leitura direta
+        void* attr = *(void**)((char*)player + attr_off(player, true));  // thread principal: leitura direta
         if (!plausible_obj(attr)) { LOGE("auto: _attr nulo"); return; }
         void* cls = g_api.object_get_class(attr);
         const void* m = cls ? g_api.class_get_method_from_name(cls, "set_AutoPlayOn", 1) : nullptr;
@@ -2197,7 +2213,7 @@ std::string read_entities_json(float radius) {
     if (!plausible_obj(mgr)) return "{\"ok\":false,\"erro\":\"XEntityMgr nulo\"}";
     FaultGuard guard;
     void* player = nullptr;
-    if (!safe_read(&player, (char*)mgr + OFF_ENTITYMGR_PLAYER, sizeof(player)) || !plausible_obj(player))
+    if (!safe_read(&player, (char*)mgr + player_off(mgr), sizeof(player)) || !plausible_obj(player))
         return "{\"ok\":false,\"erro\":\"jogador nulo (nao esta em mundo?)\"}";
     auto invoke0 = [](void* obj, const char* name) -> void* {
         void* cls = safe_class_of(obj);
@@ -2249,7 +2265,7 @@ std::string read_entities_json(float radius) {
         if (type_off) safe_read(&type, (char*)e + type_off, 4);
         int level = 0, hp = 0, maxHp = 0;
         void* attr = nullptr;
-        if (safe_read(&attr, (char*)e + OFF_XOBJECT_ATTR, sizeof(attr)) && plausible_obj(attr)) {
+        if (safe_read(&attr, (char*)e + attr_off(e), sizeof(attr)) && plausible_obj(attr)) {
             level = boxed_i32(invoke0(attr, "get_Level"));
             void* acls = safe_class_of(attr);
             const void* gm = acls ? g_api.class_get_method_from_name(acls, "GetAttr", 1) : nullptr;
@@ -2374,7 +2390,7 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
             int budget = 5000;
             search_rec(player, 0, "player", target, f, budget);
             void* attr = nullptr;
-            if (safe_read(&attr, (char*)player + OFF_XOBJECT_ATTR, sizeof(attr)) &&
+            if (safe_read(&attr, (char*)player + attr_off(player), sizeof(attr)) &&
                 plausible_obj(attr)) {
                 budget = 5000;
                 search_rec(attr, 0, "attr", target, f, budget);
@@ -2546,7 +2562,7 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
         if (!plausible_obj(mgr)) return "{\"ok\":false,\"erro\":\"XEntityMgr nulo\"}";
         FaultGuard guard;
         void* player = nullptr;
-        if (!safe_read(&player, (char*)mgr + OFF_ENTITYMGR_PLAYER, sizeof(player)) || !plausible_obj(player))
+        if (!safe_read(&player, (char*)mgr + player_off(mgr), sizeof(player)) || !plausible_obj(player))
             return "{\"ok\":false,\"erro\":\"jogador nulo (nao esta em mundo?)\"}";
         static size_t off_buff = 0, off_list = 0, o_id = 0, o_lv = 0, o_stack = 0, o_st = 0, o_sl = 0, o_ui = 0, o_info = 0, o_name = 0;
         if (!off_buff) {
