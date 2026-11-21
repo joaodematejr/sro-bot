@@ -575,6 +575,20 @@ carregar antes de despejar.
   Taklamakan lido como (0, 45.4, 1)). Pelo nome o jogo responde certo: `GETP XEntityMgr
   get_Player get_CorrectedPosition x` = 1314.03, `... z` = 1200.03. O engine agora acha
   `_correctedPosition` e `_next_pos` pelo nome (`find_field_in_chain`), com cache.
+- 2026-11-21 (com o 0.155.0 ja achando a posicao): o char continuava parado no ponto com
+  `autoPlayOn` ligado, `get_IsFighting` falso e `_ai _target` 0. O mesmo deslocamento de
+  0x10 pegou outros campos do `XEntity` (OBJV `XEntityMgr get_Player`): `_ai` 0xd8 -> 0xe8
+  (no 0xd8 agora fica o `_fly`, nulo), `_nav` 0xa8 -> 0xb8 (no 0xa8 o
+  `_singleEffectPlayer`) e `_bInCombat` 0x234 -> 0x244. O START (`{"on":1}`) achava o
+  `_ai` no 0xd8, entao so o `set_AutoPlayOn` do `_attr` (0x18, que nao mudou) pegava e a IA
+  nunca engatava. `callpi XEntityMgr get_Player _ai EnableBehaviorTree 1 1 0` e
+  `... SetAutoEnable 2 1 1` engataram na hora (alvo trocando, char andando). O engine agora
+  acha `_ai`, `_nav` e `_bInCombat` pelo nome tambem; na thread principal a classe sai do
+  `object_get_class` direto (o `safe_class_of` usa o `g_jmp` do FaultGuard).
+- Ainda fixos e certos nesse dia: `XEntityMgr.<Player>` 0xf8, `XObject._attr` 0x18 e os
+  `OFF_ATTR_*`. O `exp`/`maxExp` do PLYR saem negativos (-1724452715 / -2036146935) porque
+  sao lidos com 4 bytes e passaram de 2^31 no Lv.87 (6,55 G pro proximo nivel): problema
+  antigo, nao da atualizacao.
 
 ## Guild Boss (2026-11-16)
 
