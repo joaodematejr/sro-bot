@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.155.2] - 2026-11-21
+
 - **Engine:** blindagem contra a proxima atualizacao do jogo: o char atual (`XEntityMgr.<Player>`), os atributos (`_attr`) e, neles, nivel, nome, EXP, EXP maximo e o flag de morto agora sao achados pelo nome do campo, como a posicao e a IA na 0.155.0 e 0.155.1. Esses offsets nao mudaram em 2026-11-20, mas se mudarem o bot deixaria de achar o char (parece fora de mundo), o HP, o nivel e a morte. Os offsets antigos ficam de reserva. O PLYR passa a mandar o EXP com os 8 bytes do jogo (antes chegava negativo no Lv.87; o app ja corrigia). Como testar: com o jogo aberto pelo app nesta versao, o PLYR mostra `level` 87, o nome do char, `exp` positivo igual ao EXP do app e `dead` falso; o Treino caca normal. Sem prova ao vivo.
 
 ## [0.155.1] - 2026-11-21
