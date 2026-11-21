@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.155.1] - 2026-11-21
+
 - **Engine:** a IA da caca (`_ai`), a navegacao (`_nav`) e o flag de combate (`_bInCombat`) do `XEntity` agora sao achados pelo nome do campo, como a posicao no 0.155.0. A mesma atualizacao do jogo de 2026-11-20 andou esses campos 0x10 (`_ai` 0xd8 -> 0xe8, `_nav` 0xa8 -> 0xb8, `_bInCombat` 0x234 -> 0x244): ligar a caca so marcava o auto-play, sem engatar a IA, e o char ficava parado no ponto com monstro em volta (visto ao vivo em 2026-11-21 com o 0.155.0); o `aiFighting` e o `inCombat` do PLYR liam sempre falso e a ida ao ponto pelo `MOVE` nao achava o `_nav`. Os offsets antigos ficam so de reserva. Como testar: com o jogo aberto pelo app nesta versao e o Treino ligado no ponto, o PLYR mostra `aiFighting` verdadeiro, o char troca de alvo e mata; o log nao fica so em "caca ligada" com o char parado. Sem prova ao vivo do engine novo (a IA foi engatada por metodo, `callpi ... _ai SetAutoEnable`, com o 0.155.0).
 
 ## [0.155.0] - 2026-11-20
