@@ -589,6 +589,13 @@ carregar antes de despejar.
   `OFF_ATTR_*`. O `exp`/`maxExp` do PLYR saem negativos (-1724452715 / -2036146935) porque
   sao lidos com 4 bytes e passaram de 2^31 no Lv.87 (6,55 G pro proximo nivel): problema
   antigo, nao da atualizacao.
+- Blindagem (2026-11-21): os fixos que sobravam tambem sao achados pelo nome, com o
+  offset antigo de reserva: `XEntityMgr._003CPlayer_003Ek__BackingField` (0xf8),
+  `XObject._attr` (0x18) e, no `XAttributes`, `_level` (0x184), `_name` (0x80), `_is_dead`
+  (0x75), `_003CExp_003Ek__BackingField` (0x1d0) e `_003CMaxExp_003Ek__BackingField`
+  (0x1d8). Os nomes saem assim mesmo no metadata (o GETP acha por eles). Todos moram
+  na classe base, entao o cache vale pro char e pros monstros. O PLYR passa a mandar o
+  EXP com os 8 bytes (UInt64); o app ja aceitava (`fullExp`).
 
 ## Guild Boss (2026-11-16)
 
