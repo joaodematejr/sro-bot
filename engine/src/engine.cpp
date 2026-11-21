@@ -537,6 +537,9 @@ void dump_raw(void* base, const char* label, size_t size, FILE* f) {
 constexpr size_t OFF_ENTITYMGR_PLAYER = 0xf8;   // XEntityMgr.<Player>
 constexpr size_t OFF_XENTITY_CORRECTED_POS = 0x204;  // Vector3
 constexpr size_t OFF_XENTITY_NEXT_POS = 0x138;       // Vector3
+constexpr size_t OFF_XENTITY_AI = 0xd8;              // _ai (XAIComponent)
+constexpr size_t OFF_XENTITY_NAV = 0xa8;             // _nav (XNavigationComponent)
+constexpr size_t OFF_XENTITY_IN_COMBAT = 0x234;      // _bInCombat
 constexpr size_t OFF_XOBJECT_ATTR = 0x18;            // XObject._attr
 // Campos em XPlayerAttributes.
 constexpr size_t OFF_ATTR_NAME = 0x80;    // Il2CppString
@@ -605,21 +608,28 @@ void* safe_class_of(void* obj) {
     return c;
 }
 
-// Offset de um Vector3 do XEntity achado pelo nome, com cache. A atualizacao do jogo
+// Offset de um campo do XEntity achado pelo nome, com cache. A atualizacao do jogo
 // de 2026-11-20 mudou o layout: o 0x204 fixo passou a ler (0, y, 1) em todo
-// mundo, e o Treino via o char longe do ponto. O fixo fica so de reserva. Requer
-// FaultGuard ativo.
-size_t entity_vec_off(void* entity, const char* name, size_t fallback, size_t& cache) {
+// mundo, e o Treino via o char longe do ponto. O _ai (0xd8 -> 0xe8), o _nav
+// (0xa8 -> 0xb8) e o _bInCombat (0x234 -> 0x244) andaram junto: o START so ligava
+// o AutoPlayOn, sem engatar a IA, e o char ficava parado. O fixo fica so de
+// reserva. `main` = thread principal (sem FaultGuard; o jogador vem do
+// current_player e a classe sai direto); fora dela requer FaultGuard ativo.
+size_t entity_field_off(void* entity, const char* name, size_t fallback, size_t& cache, bool main = false) {
     if (cache) return cache;
-    void* fi = plausible_obj(entity) ? find_field_in_chain(safe_class_of(entity), name) : nullptr;
+    void* cls = main ? g_api.object_get_class(entity) : plausible_obj(entity) ? safe_class_of(entity) : nullptr;
+    void* fi = cls ? find_field_in_chain(cls, name) : nullptr;
     if (!fi) return fallback;
     cache = g_api.field_get_offset(fi);
     return cache;
 }
 
-size_t g_off_corrected = 0, g_off_next = 0;
-size_t corrected_pos_off(void* e) { return entity_vec_off(e, "_correctedPosition", OFF_XENTITY_CORRECTED_POS, g_off_corrected); }
-size_t next_pos_off(void* e) { return entity_vec_off(e, "_next_pos", OFF_XENTITY_NEXT_POS, g_off_next); }
+size_t g_off_corrected = 0, g_off_next = 0, g_off_ai = 0, g_off_nav = 0, g_off_combat = 0;
+size_t corrected_pos_off(void* e) { return entity_field_off(e, "_correctedPosition", OFF_XENTITY_CORRECTED_POS, g_off_corrected); }
+size_t next_pos_off(void* e) { return entity_field_off(e, "_next_pos", OFF_XENTITY_NEXT_POS, g_off_next); }
+size_t combat_off(void* e) { return entity_field_off(e, "_bInCombat", OFF_XENTITY_IN_COMBAT, g_off_combat); }
+size_t ai_off(void* e, bool main = false) { return entity_field_off(e, "_ai", OFF_XENTITY_AI, g_off_ai, main); }
+size_t nav_off(void* e, bool main = false) { return entity_field_off(e, "_nav", OFF_XENTITY_NAV, g_off_nav, main); }
 
 bool field_is_string(void* fi) {
     if (!g_api.field_get_type || !g_api.type_get_name) return false;
@@ -840,14 +850,14 @@ std::string read_live_player(Il2CppApi& api, const void* img) {
         }
     }
 
-    // Estados: _is_dead (XPlayerAttributes +0x75), _bInCombat (XEntity +0x234).
+    // Estados: _is_dead (XPlayerAttributes +0x75), _bInCombat (XEntity, pelo nome).
     unsigned char deadB = 0, combatB = 0;
     if (plausible_obj(attr)) safe_read(&deadB, (char*)attr + 0x75, 1);
-    safe_read(&combatB, (char*)player + 0x234, 1);
+    safe_read(&combatB, (char*)player + combat_off(player), 1);
     bool dead = deadB != 0;
     bool inCombat = combatB != 0;
 
-    // Flags de auto (os certos para combate, ja que inCombat/+0x234 nao vira):
+    // Flags de auto (os certos para combate, ja que o _bInCombat nao vira):
     // XPlayerAttributes.get_AutoPlayOn() e XAIComponent.get_IsFighting(), via
     // getter (0 args). O retorno bool vem boxed, byte em +0x10 (como GetAttr).
     int autoPlay = 0, aiFight = 0;
@@ -861,7 +871,7 @@ std::string read_live_player(Il2CppApi& api, const void* img) {
         }
     }
     void* aic = nullptr;
-    if (safe_read(&aic, (char*)player + 0xd8, sizeof(aic)) && plausible_obj(aic) &&
+    if (safe_read(&aic, (char*)player + ai_off(player), sizeof(aic)) && plausible_obj(aic) &&
         api.object_get_class) {
         void* aicls = api.object_get_class(aic);
         const void* m = aicls ? api.class_get_method_from_name(aicls, "get_IsFighting", 0) : nullptr;
@@ -989,21 +999,21 @@ void dump_player_methods(Il2CppApi& api, const void* img) {
              k = api.class_get_parent ? api.class_get_parent(k) : nullptr, depth++)
             dump_methods(api, k, "player-chain", f);
     }
-    struct Comp { size_t off; const char* name; };
-    const Comp comps[] = {{0x58, "_skill"}, {0xb0, "_moveComponent"},
-                          {0xa8, "_nav"}, {0x68, "_net"}, {0xd8, "_ai"},
-                          {0x18, "_attr(XPlayerAttributes)"}};
-    for (const Comp& c : comps) {
+    // Pelo nome: os offsets mudam a cada atualizacao do jogo.
+    const char* comps[] = {"_skill", "_moveComponent", "_nav", "_net", "_ai", "_attr"};
+    void* pcls = api.object_get_class ? safe_class_of(player) : nullptr;
+    for (const char* name : comps) {
+        void* fi = pcls ? find_field_in_chain(pcls, name) : nullptr;
         void* sub = nullptr;
-        if (safe_read(&sub, (char*)player + c.off, sizeof(sub)) && plausible_obj(sub) &&
-            api.object_get_class) {
-            void* cls = api.object_get_class(sub);
+        if (fi && safe_read(&sub, (char*)player + api.field_get_offset(fi), sizeof(sub)) &&
+            plausible_obj(sub)) {
+            void* cls = safe_class_of(sub);
             if (cls) {
                 // despeja a classe e tambem a cadeia de bases dela
                 int d = 0;
                 for (void* k = cls; k && d < 4;
                      k = api.class_get_parent ? api.class_get_parent(k) : nullptr, d++)
-                    dump_methods(api, k, c.name, f);
+                    dump_methods(api, k, name, f);
             }
         }
     }
@@ -1038,11 +1048,11 @@ std::string do_move(float x, float y, float z) {
         }
     }
 
-    // 2) fallback: XNavigationComponent.Navigate(Vector3) no _nav (0xa8).
+    // 2) fallback: XNavigationComponent.Navigate(Vector3) no _nav (pelo nome).
     void* nav = nullptr;
     {
         FaultGuard guard;
-        safe_read(&nav, (char*)player + 0xa8, sizeof(nav));
+        safe_read(&nav, (char*)player + nav_off(player), sizeof(nav));
     }
     if (plausible_obj(nav)) {
         void* navcls = g_api.object_get_class(nav);
@@ -1195,7 +1205,7 @@ void dump_monobehaviours(Il2CppApi& api) {
 void exec_move_main(float x, float y, float z) {
     void* player = current_player(g_api, g_xmain);
     if (!player) return;
-    void* nav = *(void**)((char*)player + 0xa8);  // _nav (thread principal: leitura direta)
+    void* nav = *(void**)((char*)player + nav_off(player, true));  // _nav (thread principal: leitura direta)
     if (!plausible_obj(nav) || !g_api.object_get_class) return;
     void* navcls = g_api.object_get_class(nav);
     const void* m = navcls ? g_api.class_get_method_from_name(navcls, "Navigate", 1) : nullptr;
@@ -1236,7 +1246,7 @@ void exec_auto_main(const Action& act) {
     // para testar candidatos a off real sem recompilar: EnableBehaviorTree,
     // ResetAIData, TurnOffProvokedAI, etc.).
     if (method == 6) {
-        void* ai = *(void**)((char*)player + 0xd8);
+        void* ai = *(void**)((char*)player + ai_off(player, true));
         if (!plausible_obj(ai)) { LOGE("call: _ai nulo"); return; }
         void* cls = g_api.object_get_class(ai);
         const void* m = cls ? g_api.class_get_method_from_name(cls, act.name, act.argc) : nullptr;
@@ -1518,7 +1528,7 @@ void exec_auto_main(const Action& act) {
     // no _attr sustenta. Provado ao vivo que os dois sao necessarios e nessa
     // ordem (AutoPlayOn sozinho nao inicia; SetAutoEnable sozinho nao sustenta).
     if (method == 4) {
-        void* ai = *(void**)((char*)player + 0xd8);
+        void* ai = *(void**)((char*)player + ai_off(player, true));
         if (plausible_obj(ai)) {
             void* acls = g_api.object_get_class(ai);
             // Religa a behavior tree (cerebro da IA) ANTES de engajar: provado
@@ -1549,7 +1559,7 @@ void exec_auto_main(const Action& act) {
             const void* ma = acls ? g_api.class_get_method_from_name(acls, "set_AutoPlayOn", 1) : nullptr;
             if (ma) { uint8_t z = 0; void* p[1] = {&z}; void* e = nullptr; g_api.runtime_invoke(ma, attr, p, &e); }
         }
-        void* ai = *(void**)((char*)player + 0xd8);
+        void* ai = *(void**)((char*)player + ai_off(player, true));
         if (plausible_obj(ai)) {
             void* acls = g_api.object_get_class(ai);
             const void* me = acls ? g_api.class_get_method_from_name(acls, "SetAutoEnable", 2) : nullptr;
@@ -1564,7 +1574,7 @@ void exec_auto_main(const Action& act) {
         return;
     }
 
-    // method 1 age no _attr (XPlayerAttributes, 0x18); os outros no _ai (0xd8).
+    // method 1 age no _attr (XPlayerAttributes, 0x18); os outros no _ai (pelo nome).
     if (method == 1) {
         void* attr = *(void**)((char*)player + 0x18);  // thread principal: leitura direta
         if (!plausible_obj(attr)) { LOGE("auto: _attr nulo"); return; }
@@ -1578,7 +1588,7 @@ void exec_auto_main(const Action& act) {
         return;
     }
 
-    void* ai = *(void**)((char*)player + 0xd8);  // _ai (thread principal: leitura direta)
+    void* ai = *(void**)((char*)player + ai_off(player, true));  // _ai (thread principal: leitura direta)
     if (!plausible_obj(ai)) { LOGE("auto: _ai nulo"); return; }
     void* cls = g_api.object_get_class(ai);
     if (!cls) return;
@@ -2203,10 +2213,10 @@ std::string read_entities_json(float radius) {
     auto entity_id = [&](void* e) -> uint32_t { return (uint32_t)boxed_u64(invoke0(e, "get_ID")); };
     float me[3] = {0, 0, 0};
     safe_read(me, (char*)player + corrected_pos_off(player), sizeof(me));
-    // Alvo do auto-play: XAIComponent._target (o _ai do jogador fica em +0xd8).
+    // Alvo do auto-play: XAIComponent._target (o _ai do jogador, pelo nome).
     uint32_t target = 0;
     void* ai = nullptr;
-    if (safe_read(&ai, (char*)player + 0xd8, sizeof(ai)) && plausible_obj(ai)) {
+    if (safe_read(&ai, (char*)player + ai_off(player), sizeof(ai)) && plausible_obj(ai)) {
         void* tf = find_field_in_chain(safe_class_of(ai), "_target");
         void* t = nullptr;
         if (tf && safe_read(&t, (char*)ai + g_api.field_get_offset(tf), sizeof(t)) && plausible_obj(t)) target = entity_id(t);

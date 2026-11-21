@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **Engine:** a IA da caca (`_ai`), a navegacao (`_nav`) e o flag de combate (`_bInCombat`) do `XEntity` agora sao achados pelo nome do campo, como a posicao no 0.155.0. A mesma atualizacao do jogo de 2026-11-20 andou esses campos 0x10 (`_ai` 0xd8 -> 0xe8, `_nav` 0xa8 -> 0xb8, `_bInCombat` 0x234 -> 0x244): ligar a caca so marcava o auto-play, sem engatar a IA, e o char ficava parado no ponto com monstro em volta (visto ao vivo em 2026-11-21 com o 0.155.0); o `aiFighting` e o `inCombat` do PLYR liam sempre falso e a ida ao ponto pelo `MOVE` nao achava o `_nav`. Os offsets antigos ficam so de reserva. Como testar: com o jogo aberto pelo app nesta versao e o Treino ligado no ponto, o PLYR mostra `aiFighting` verdadeiro, o char troca de alvo e mata; o log nao fica so em "caca ligada" com o char parado. Sem prova ao vivo do engine novo (a IA foi engatada por metodo, `callpi ... _ai SetAutoEnable`, com o 0.155.0).
+
 ## [0.155.0] - 2026-11-20
 
 - **Engine:** a posicao do char e dos monstros (`_correctedPosition` e `_next_pos` do `XEntity`) agora e achada pelo nome do campo, nao pelo offset fixo. Na atualizacao do jogo de 2026-11-20 o layout mudou e o 0x204 fixo passou a ler (0, y, 1) pra todo mundo: o Treino via o char longe do ponto e nao religava a caca (char parado no ponto, com monstro em volta), e o mapa e a arena do Guild Boss liam tudo em (0, 1). O offset antigo fica so de reserva. Como testar: com o jogo aberto pelo app nesta versao, o PLYR devolve `corrected` igual as coordenadas do minimapa (ex.: 1314,1200 no North Taklamakan) e o Treino volta a cacar no ponto.
