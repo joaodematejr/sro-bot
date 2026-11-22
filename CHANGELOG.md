@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** a Sekhmet War nao era detectada. O app lia `XActivityDocument IsMulActivityOpening`, mas esse estado e um cache que o jogo so renova com a tela de atividades aberta; sem ela ficava no "vai abrir" do login e o bot perdeu a Sekhmet de 2026-11-22 (todo dia das 20:30 as 21:00 do servidor, UTC+8, ou seja 09:30 as 10:00 de Brasilia). Agora a checagem pede a lista ao servidor (`SendQueryGetMulActInfo`, o mesmo pedido da tela) no maximo 1 vez por minuto antes de ler (`app/src/controller/sekhmet.ts`, `refreshActivities`). Como testar: `npm test` (teste do limite de 1 pedido por minuto); ao vivo, com a atividade Sekhmet ligada, as 09:30 de Brasilia o log mostra "Sekhmet War aberta: entrando." em ate 1 min e 15 s. Sem prova ao vivo (a proxima abre em 2026-11-23 09:30).
+
 ## [0.155.3] - 2026-11-21
 
 - **App:** barra do **Berserk** no painel do char, ao lado do HP e do MP: mostra os pontos de raiva (ex.: "3/5"), "5/5 pronto" com a barra cheia e "ativo" com o modo ligado. Lida por metodo (`ArtifactDocument get_AngerPoint`, `get_AngerPointMax` e `get_AngerPointCD`, os mesmos que o jogo usa pra mostrar o botao), junto com a leitura do char a cada segundo. Antes so dava pra saber se o botao estava na tela. Ao vivo em 2026-11-21 (0.155.1) a barra enchia ~1 ponto a cada 8 min no ponto 74-76 e o Treino apertou sozinho com ela cheia. Como testar: com o char cacando, o painel mostra "Berserk 3/5" subindo ate "5/5 pronto" e vira "ativo" quando o Treino aperta. Sem prova ao vivo da tela nova.

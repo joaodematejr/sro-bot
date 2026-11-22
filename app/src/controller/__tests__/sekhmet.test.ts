@@ -16,6 +16,8 @@ import {
   LEAVE_TEAM_BODY,
   newSekhmetMemory,
   nextSekhmetStep,
+  REFRESH_ACTIVITIES_BODY,
+  REFRESH_ACTIVITIES_MS,
   SEKHMET_SCENE,
   type SekhmetSnapshot,
   sekhmetOpenNow,
@@ -80,4 +82,18 @@ test("sekhmet: aberto pela atividade 524 ou com o char na arena", async () => {
   assert.equal(await sekhmetOpenNow(q(100003, false)), false);
   assert.equal(await sekhmetOpenNow(q(100003, true)), true);
   assert.equal(await sekhmetOpenNow(q(SEKHMET_SCENE, false)), true);
+});
+
+test("sekhmet: pede a lista de atividades ao servidor no maximo 1 vez por minuto", async () => {
+  const sent: string[] = [];
+  const q = async (tag: string, body: string) => {
+    if (tag === "SKIL") sent.push(body);
+    return body === "XScene get_SceneID" ? { ok: true, int: 100003 } : { ok: true, bool: false };
+  };
+  const T = Date.now() + 10 * REFRESH_ACTIVITIES_MS;
+  await sekhmetOpenNow(q, T);
+  await sekhmetOpenNow(q, T + 15_000);
+  assert.deepEqual(sent, [REFRESH_ACTIVITIES_BODY]);
+  await sekhmetOpenNow(q, T + REFRESH_ACTIVITIES_MS);
+  assert.equal(sent.length, 2);
 });
