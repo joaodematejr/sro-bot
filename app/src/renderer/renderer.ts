@@ -4,6 +4,7 @@ import { chestDelayMs, chestPassRolls, contScheduleText } from "../controller/co
 import { type AiAction, parseActions, stripActions, validateAction } from "../controller/aiactions";
 import { activityExpLine, eventFromLog, type ExpPoint } from "../controller/history";
 import { unsignedExp } from "../controller/train";
+import { type Rage, ragePct, rageText } from "../controller/berserk";
 import { parseNames } from "../controller/party";
 import { bagLevel, bagStep, bagText, type BagWatch } from "../controller/bag";
 import { dueDailies, gameDay } from "../controller/daily";
@@ -45,6 +46,7 @@ interface PlayerState {
   kills?: number; // abates do char desde que o jogo abriu (hook de morte do engine)
   corrected?: [number, number, number];
   next?: [number, number, number];
+  rage?: Rage; // barra do Berserk
   erro?: string;
 }
 
@@ -2667,6 +2669,7 @@ function clearVitals(): void {
   for (const [bar, txt] of [
     ["p-hp", "p-hp-txt"],
     ["p-mp", "p-mp-txt"],
+    ["p-rage", "p-rage-txt"],
   ]) {
     ($(bar) as HTMLElement).style.width = "0%";
     $(txt).textContent = "-";
@@ -2711,6 +2714,8 @@ function renderPlayer(p: PlayerState): void {
   };
   bar(p.hp ?? 0, p.maxHp ?? 0, "p-hp", "p-hp-txt");
   bar(p.mp ?? 0, p.maxMp ?? 0, "p-mp", "p-mp-txt");
+  ($("p-rage") as HTMLElement).style.width = `${ragePct(p.rage).toFixed(0)}%`;
+  $("p-rage-txt").textContent = rageText(p.rage);
   updateStats(p);
 }
 

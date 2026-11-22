@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import net from "node:net";
 import { promisify } from "node:util";
 
+import { type Rage, readRage } from "../controller/berserk";
 import { requestOnce } from "../controller/enginechannel";
 import { fullExp, readExpHigh, unsignedExp } from "../controller/train";
 import { adbBin } from "./adbbin";
@@ -22,6 +23,7 @@ export interface PlayerState {
   name?: string;
   exp?: number;
   maxExp?: number;
+  rage?: Rage; // barra do Berserk
   erro?: string;
 }
 
@@ -59,13 +61,16 @@ export function setAutoFight(host: string, port: number, on: boolean): Promise<R
   return sendCommand(host, port, "SKIL", JSON.stringify({ on: on ? 1 : 0 }));
 }
 
-// Consulta o engine: CONN e, em mundo, os 4 bytes de cima do EXP (fullExp).
+// Consulta o engine: CONN e, em mundo, os 4 bytes de cima do EXP (fullExp) e a
+// barra do Berserk.
 export async function queryPlayer(host: string, port: number, timeoutMs = 4000): Promise<PlayerState> {
   const p = await queryPlayerConn(host, port, timeoutMs);
   if (p.ok !== true || typeof p.exp !== "number") return p;
-  const hi = await readExpHigh((tag, body) => sendCommand(host, port, tag, body));
+  const q = (tag: string, body: string) => sendCommand(host, port, tag, body);
+  const hi = await readExpHigh(q);
   p.exp = fullExp(p.exp, hi.exp);
   if (typeof p.maxExp === "number") p.maxExp = fullExp(p.maxExp, hi.max);
+  p.rage = await readRage(q).catch(() => undefined);
   return p;
 }
 
