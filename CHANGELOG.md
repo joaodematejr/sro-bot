@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.155.3] - 2026-11-21
+
 - **App:** barra do **Berserk** no painel do char, ao lado do HP e do MP: mostra os pontos de raiva (ex.: "3/5"), "5/5 pronto" com a barra cheia e "ativo" com o modo ligado. Lida por metodo (`ArtifactDocument get_AngerPoint`, `get_AngerPointMax` e `get_AngerPointCD`, os mesmos que o jogo usa pra mostrar o botao), junto com a leitura do char a cada segundo. Antes so dava pra saber se o botao estava na tela. Ao vivo em 2026-11-21 (0.155.1) a barra enchia ~1 ponto a cada 8 min no ponto 74-76 e o Treino apertou sozinho com ela cheia. Como testar: com o char cacando, o painel mostra "Berserk 3/5" subindo ate "5/5 pronto" e vira "ativo" quando o Treino aperta. Sem prova ao vivo da tela nova.
 
 ## [0.155.2] - 2026-11-21
