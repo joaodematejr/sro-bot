@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** barra do **Berserk** no painel do char, ao lado do HP e do MP: mostra os pontos de raiva (ex.: "3/5"), "5/5 pronto" com a barra cheia e "ativo" com o modo ligado. Lida por metodo (`ArtifactDocument get_AngerPoint`, `get_AngerPointMax` e `get_AngerPointCD`, os mesmos que o jogo usa pra mostrar o botao), junto com a leitura do char a cada segundo. Antes so dava pra saber se o botao estava na tela. Ao vivo em 2026-11-21 (0.155.1) a barra enchia ~1 ponto a cada 8 min no ponto 74-76 e o Treino apertou sozinho com ela cheia. Como testar: com o char cacando, o painel mostra "Berserk 3/5" subindo ate "5/5 pronto" e vira "ativo" quando o Treino aperta. Sem prova ao vivo da tela nova.
+
 ## [0.155.2] - 2026-11-21
 
 - **Engine:** blindagem contra a proxima atualizacao do jogo: o char atual (`XEntityMgr.<Player>`), os atributos (`_attr`) e, neles, nivel, nome, EXP, EXP maximo e o flag de morto agora sao achados pelo nome do campo, como a posicao e a IA na 0.155.0 e 0.155.1. Esses offsets nao mudaram em 2026-11-20, mas se mudarem o bot deixaria de achar o char (parece fora de mundo), o HP, o nivel e a morte. Os offsets antigos ficam de reserva. O PLYR passa a mandar o EXP com os 8 bytes do jogo (antes chegava negativo no Lv.87; o app ja corrigia). Como testar: com o jogo aberto pelo app nesta versao, o PLYR mostra `level` 87, o nome do char, `exp` positivo igual ao EXP do app e `dead` falso; o Treino caca normal. Sem prova ao vivo.

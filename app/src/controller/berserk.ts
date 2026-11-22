@@ -26,3 +26,39 @@ export const BERSERK_EVERY_MS = 5000;
 export function shouldBerserk(s: { inWorld?: boolean; dead?: boolean; inCombat?: boolean } | null | undefined, travelling: boolean): boolean {
   return !!s && s.inWorld === true && !s.dead && s.inCombat === true && !travelling;
 }
+
+// Barra do Berserk (lida no BattleMain.UpdateAngerPoint em 2026-11-21): pontos de
+// raiva em ArtifactDocument.AngerPoint, de 0 ate AngerPointMax (5), mandados pelo
+// servidor. O botao aparece com a barra cheia e o modo parado (AngerPointCD 0); com
+// o modo ativo o CD fica maior que 0. No ponto 74-76 enche em ~8 min por ponto.
+export const RAGE_POINT = "ArtifactDocument get_AngerPoint";
+export const RAGE_MAX = "ArtifactDocument get_AngerPointMax";
+export const RAGE_CD = "ArtifactDocument get_AngerPointCD";
+
+export interface Rage {
+  point: number;
+  max: number;
+  active: boolean;
+}
+
+type Query = (tag: string, body: string) => Promise<Record<string, unknown>>;
+const int = (r: Record<string, unknown>): number | undefined => (r.ok === true && typeof r.int === "number" ? r.int : undefined);
+
+export async function readRage(q: Query): Promise<Rage | undefined> {
+  const point = int(await q("GETP", RAGE_POINT));
+  const max = int(await q("GETP", RAGE_MAX));
+  if (point === undefined || max === undefined || point < 0 || max <= 0) return undefined;
+  return { point, max, active: (int(await q("GETP", RAGE_CD)) ?? 0) > 0 };
+}
+
+export function rageText(r: Rage | undefined): string {
+  if (!r) return "-";
+  if (r.active) return "ativo";
+  return r.point >= r.max ? `${r.max}/${r.max} pronto` : `${r.point}/${r.max}`;
+}
+
+// Largura da barra: cheia com o modo ativo.
+export function ragePct(r: Rage | undefined): number {
+  if (!r) return 0;
+  return r.active ? 100 : Math.min(100, (100 * r.point) / r.max);
+}
