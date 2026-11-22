@@ -5,7 +5,10 @@
 // por ele em 2026-11-17 e 18). Conferido no XMainClient.dll descompilado e ao vivo
 // (so leitura, evento fechado) em 2026-11-19:
 //   Aberto       -> XActivityDocument IsMulActivityOpening(XSys_Activity_WorldBoss 524):
-//                   verdadeiro com a atividade em Open ou Prepare.
+//                   verdadeiro com a atividade em Open ou Prepare. O estado e um cache
+//                   que o jogo so renova com a tela de atividades aberta; sem pedir
+//                   (SendQueryGetMulActInfo) ele fica no "vai abrir" do login.
+//                   Horario: todo dia 20:30 a 21:00 do servidor (UTC+8).
 //   Arena        -> XScene get_SceneID == XGlobalConfig WorldBossSceneID (2200).
 //   Entrar       -> XWorldBossDocument ReqEnterWorldBossScene (ReqEnterScene da
 //                   cena 2200; o proprio metodo segura 1 s entre pedidos).
@@ -28,6 +31,9 @@ export const ENTER_SEKHMET_BODY = "calls XWorldBossDocument ReqEnterWorldBossSce
 export const ENCOURAGE_GOLD_BODY = "calls XWorldBossDocument ReqEncourage 0";
 export const EXIT_SEKHMET_BODY = "calls XWorldBossDocument ReqQutiScene 0";
 export const BATTLE_INFO_BODY = "calls XWorldBossDocument ReqBattleInfo 0";
+export const REFRESH_ACTIVITIES_BODY = "calls XActivityDocument SendQueryGetMulActInfo 0";
+// Pedido da lista de atividades ao servidor, no maximo 1 por minuto.
+export const REFRESH_ACTIVITIES_MS = 60_000;
 export const HUNT_ON_BODY = '{"on":1}';
 export { LEAVE_TEAM_BODY };
 
@@ -146,8 +152,19 @@ export function afterSekhmetStep(m: SekhmetMemory, step: SekhmetStep, now: numbe
 
 const num = (r: Record<string, unknown>): number | undefined => (r.ok === true && typeof r.int === "number" ? r.int : undefined);
 
-export async function sekhmetOpenNow(q: EngineQuery): Promise<boolean> {
+let lastRefreshAt = -Infinity;
+
+// Pede ao servidor o estado atual das atividades (a resposta chega depois e vale
+// pra proxima leitura).
+export async function refreshActivities(q: EngineQuery, now = Date.now()): Promise<void> {
+  if (now - lastRefreshAt < REFRESH_ACTIVITIES_MS) return;
+  lastRefreshAt = now;
+  await q("SKIL", REFRESH_ACTIVITIES_BODY);
+}
+
+export async function sekhmetOpenNow(q: EngineQuery, now = Date.now()): Promise<boolean> {
   if (await inSekhmetArena(q)) return true;
+  await refreshActivities(q, now).catch(() => undefined);
   return (await q("GETP", `XActivityDocument IsMulActivityOpening:${SYS_WORLD_BOSS}`)).bool === true;
 }
 
