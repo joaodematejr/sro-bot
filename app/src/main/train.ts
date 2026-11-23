@@ -30,8 +30,8 @@ import {
   pickSeekTarget,
   readEnemyPositions,
   SEEK_ARRIVE_M,
-  SEEK_WALK_MAX_MS,
   seekBody,
+  seekWalkMs,
   shouldSeek,
   stopReason,
   readNearbyEnemyLevels,
@@ -591,7 +591,8 @@ export async function runTrain(
         try {
           await q("SKIL", seekBody(t, s.scene));
           const t0 = Date.now();
-          while (Date.now() - t0 < SEEK_WALK_MAX_MS) {
+          const walkMs = seekWalkMs(Math.hypot(t[0] - s.pos[0], t[2] - s.pos[2]));
+          while (Date.now() - t0 < walkMs) {
             await sleep(500);
             const p = (await q("CONN", "")).player as { corrected?: number[]; inCombat?: boolean; dead?: boolean } | undefined;
             const c = p?.corrected;

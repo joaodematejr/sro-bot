@@ -1078,8 +1078,9 @@ async function maybeRunCardAlbum(): Promise<void> {
 
 let gbBusy = false;
 let gbLastRunAt = 0;
-// Checagem do Guild Boss num timer proprio (so le o bCanFight e a cena).
-const GB_CHECK_MS = 15 * 1000;
+// Checagem do Guild Boss num timer proprio (so le o bCanFight e a cena). 5 s:
+// em 2026-11-23 ele entrou 42 s depois de abrir; o usuario quer entrar na hora.
+const GB_CHECK_MS = 5 * 1000;
 let gbWarnedTrain = false;
 // O Guild Boss parou o Treino e ainda falta religar.
 let gbResumeTrain = false;
@@ -1097,9 +1098,27 @@ async function resumeTrainAfterGuildBoss(): Promise<void> {
   if (polling && isChecked("act-train")) resumeTrainLater("do Guild Boss");
 }
 
+// Guild Boss e Sekhmet War tem hora marcada e duram 20 a 30 min: abertos, param o
+// que estiver rodando (Continental, diarias, Album de Cards) e seguram a fila ate
+// o bot entrar. Em 2026-11-23 a Sekhmet abriu 09:30 e o bot so tentou 09:44.
+let eventOpen = "";
+async function checkTimedEvents(): Promise<void> {
+  if (!polling || watchdogBusy || loggingIn || outOfWorldSince !== 0 || gbBusy || swBusy) return;
+  let open = "";
+  if (isChecked("act-guildboss") && (await window.sro.guildBossOpen().catch(() => false))) open = "Guild Boss";
+  else if (isChecked("act-sekhmet") && activitiesDone()["act-sekhmet"] !== gameDay() && (await window.sro.sekhmetOpen().catch(() => false))) open = "Sekhmet War";
+  const was = eventOpen;
+  eventOpen = open;
+  if (!open || !(activitiesRunning || contBusy)) return;
+  if (was !== open) log(`${open} aberto: parando a atividade em andamento pra entrar.`);
+  const stops = [window.sro.stopContinental, window.sro.stopCardAlbum, window.sro.stopFirm, window.sro.stopTower, window.sro.stopGuild];
+  await Promise.all(stops.map((f) => f().catch(() => undefined)));
+}
+
 // Passada de 1 min: cada atividade roda mesmo se a anterior falhar (antes um erro
 // numa delas pulava o resto da fila).
 async function runScheduled(): Promise<void> {
+  if (eventOpen) return;
   const steps: [string, () => Promise<void>][] = [
     ["diarias", maybeRunDailies],
     ["Continental", maybeRunContinental],
@@ -2151,7 +2170,7 @@ async function runOncePerDay(id: string, label: string, fn: () => Promise<boolea
 let dailyDay = 0; // 0 para checar diarias pendentes no primeiro ciclo
 async function maybeRunDailies(): Promise<void> {
   const day = gameDay();
-  if (!polling || activitiesRunning || contBusy || watchdogBusy || loggingIn) return;
+  if (!polling || eventOpen || activitiesRunning || contBusy || watchdogBusy || loggingIn) return;
   let retry = false;
   if (day !== dailyDay) {
     dailyDay = day;
@@ -3172,6 +3191,7 @@ function wire(): void {
   // quando a janela dos envelopes da guilda segura o Gratis do dia na fila.
   window.setInterval(() => void maybeRunGuildBoss().catch((e) => log(`Guild Boss: checagem falhou: ${String(e)}`)), GB_CHECK_MS);
   window.setInterval(() => void maybeRunSekhmet().catch((e) => log(`Sekhmet War: checagem falhou: ${String(e)}`)), GB_CHECK_MS);
+  window.setInterval(() => void checkTimedEvents().catch(() => undefined), GB_CHECK_MS);
   // Mochila: confere a cada 2 min com o bot rodando e o char em mundo.
   window.setInterval(() => {
     if (polling && !watchdogBusy && !loggingIn && outOfWorldSince === 0) void checkBag().catch(() => undefined);

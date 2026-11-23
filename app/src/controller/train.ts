@@ -185,16 +185,23 @@ export const LEAVE_DEFEND_HP_PCT = 60;
 // tudo morto ali, fica parado esperando renascer (2026-11-08: 2 a 3 min por vez
 // no Niya Shaman, ate o "religar a caca" dos 3 min). Sem EXP por SEEK_IDLE_MS,
 // fora de combate, com HP cheio e nenhum inimigo a menos de SEEK_CLEAR_M, o bot
-// anda ate o inimigo vivo mais perto dentro do ponto. Andar (TeleportNavigate)
+// anda ate o inimigo vivo mais perto dentro do raio do ponto (sem ponto, ate
+// SEEK_MAX_M). 2026-11-23: com 45 s e teto de 70 m ele ainda ficava parado
+// esperando renascer; agora 15 s e o raio inteiro do ponto. Andar (TeleportNavigate)
 // DESLIGA o auto-play (visto ao vivo 11:34: 26 m em 3 s, auto desligado e o
 // combate comecou com ele parado), entao o main religa a caca ao chegar, ao
 // entrar em combate ou em SEEK_WALK_MAX_MS, o que vier primeiro.
-export const SEEK_IDLE_MS = 45000;
-export const SEEK_COOLDOWN_MS = 30000;
+export const SEEK_IDLE_MS = 15000;
+export const SEEK_COOLDOWN_MS = 15000;
 export const SEEK_CLEAR_M = 25;
 export const SEEK_MAX_M = 70;
 export const SEEK_ARRIVE_M = 5;
 export const SEEK_WALK_MAX_MS = 6000;
+// Andando ate um monstro longe: ~6 m/s, com folga, ate 30 s.
+export const SEEK_WALK_LONG_MS = 30000;
+export function seekWalkMs(distM: number): number {
+  return Math.min(SEEK_WALK_LONG_MS, Math.max(SEEK_WALK_MAX_MS, Math.round((distM / 6) * 1000) + 2000));
+}
 // Fim do treino com o char morto no caminho da cidade (quem pausou nao deve
 // seguir como se ele estivesse la).
 export const DIED_BEFORE_HOME = "morreu antes de chegar na cidade";
@@ -1023,13 +1030,13 @@ export function shouldSeek(s: TrainSnapshot | null, p: TrainProgress, now: numbe
 }
 
 // Inimigo vivo mais perto pra ir buscar: null com inimigo ja perto (o auto-play
-// cuida e desligar a caca ali e risco) ou sem nenhum ate SEEK_MAX_M dentro do ponto.
+// cuida e desligar a caca ali e risco) ou sem nenhum vivo no raio do ponto.
 export function pickSeekTarget(pos: [number, number, number], enemies: [number, number, number][], spot?: TrainSpot): [number, number, number] | null {
   const dist = (e: [number, number, number]) => Math.hypot(e[0] - pos[0], e[2] - pos[2]);
   if (enemies.some((e) => dist(e) < SEEK_CLEAR_M)) return null;
   const range = spot ? (spot.range && spot.range > 0 ? spot.range : SPOT_LEAVE_M) : Infinity;
   const ok = enemies
-    .filter((e) => dist(e) <= SEEK_MAX_M && (!spot || Math.hypot(e[0] - spot.x, e[2] - spot.z) <= range))
+    .filter((e) => (spot ? Math.hypot(e[0] - spot.x, e[2] - spot.z) <= range : dist(e) <= SEEK_MAX_M))
     .sort((a, b) => dist(a) - dist(b));
   return ok[0] ?? null;
 }
@@ -1050,7 +1057,7 @@ export function isMonsterType(type: unknown): boolean {
 }
 
 // Posicao (x, altura, z) dos inimigos carregados.
-export async function readEnemyPositions(q: EngineQuery, max = 40): Promise<[number, number, number][]> {
+export async function readEnemyPositions(q: EngineQuery, max = 80): Promise<[number, number, number][]> {
   const n = await q("GETP", "XEntityMgr GetAll get_Count");
   const count = typeof n.int === "number" ? Math.min(n.int, max) : 0;
   const out: [number, number, number][] = [];

@@ -12,7 +12,10 @@ import {
   leaveBlock,
   pickSeekTarget,
   SEEK_IDLE_MS,
+  SEEK_WALK_LONG_MS,
+  SEEK_WALK_MAX_MS,
   seekBody,
+  seekWalkMs,
   shouldSeek,
   afterTrainAction,
   areaVerdict,
@@ -377,9 +380,16 @@ test("parado sem monstro: procura o mais perto dentro do ponto, so com tudo limp
   assert.deepEqual(pickSeekTarget(pos, [[1325, 0, 680], [1355, 0, 620], [1500, 0, 620]], A), [1355, 0, 620]);
   // Monstro a menos de 25 m: o auto-play cuida, nao desliga nada.
   assert.equal(pickSeekTarget(pos, [[1335, 0, 620], [1355, 0, 620]], A), null);
-  // Fora do raio do ponto ou longe demais: nada.
+  // Longe do char mas dentro do raio do ponto (100 m): vai buscar.
+  assert.deepEqual(pickSeekTarget(pos, [[1325, 0, 700]], A), [1325, 0, 700]);
+  // Fora do raio do ponto: nada.
   assert.equal(pickSeekTarget(pos, [[1325 + 200, 0, 620]], A), null);
-  assert.equal(pickSeekTarget(pos, [[1325, 0, 700]], A), null);
+  assert.equal(pickSeekTarget(pos, [[1325, 0, 730]], A), null);
+  // Sem ponto salvo: so ate 70 m.
+  assert.equal(pickSeekTarget(pos, [[1325, 0, 700]]), null);
+  assert.equal(seekWalkMs(10), SEEK_WALK_MAX_MS);
+  assert.equal(seekWalkMs(90), 17000);
+  assert.equal(seekWalkMs(500), SEEK_WALK_LONG_MS);
   assert.equal(seekBody([1, 2, 3], 100003), "callv3 TeleportDocument TeleportNavigate 3 1 2 3 100003 0");
 });
 
