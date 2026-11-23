@@ -13,10 +13,12 @@ import {
   EXIT_RETRY_MS,
   EXIT_SEKHMET_BODY,
   HUNT_ON_BODY,
+  inActivityWindow,
   LEAVE_TEAM_BODY,
   newSekhmetMemory,
   nextSekhmetStep,
   REFRESH_ACTIVITIES_BODY,
+  REFRESH_ACTIVITIES_FAST_MS,
   REFRESH_ACTIVITIES_MS,
   SEKHMET_SCENE,
   type SekhmetSnapshot,
@@ -90,10 +92,38 @@ test("sekhmet: pede a lista de atividades ao servidor no maximo 1 vez por minuto
     if (tag === "SKIL") sent.push(body);
     return body === "XScene get_SceneID" ? { ok: true, int: 100003 } : { ok: true, bool: false };
   };
+  // Fora do horario (a lista nao responde startTime): 1 por minuto.
   const T = Date.now() + 10 * REFRESH_ACTIVITIES_MS;
   await sekhmetOpenNow(q, T);
   await sekhmetOpenNow(q, T + 15_000);
   assert.deepEqual(sent, [REFRESH_ACTIVITIES_BODY]);
   await sekhmetOpenNow(q, T + REFRESH_ACTIVITIES_MS);
   assert.equal(sent.length, 2);
+});
+
+test("sekhmet: no horario pede o estado a cada 5 s", async () => {
+  const sent: string[] = [];
+  const q = async (tag: string, body: string) => {
+    if (tag === "SKIL") sent.push(body);
+    if (body.endsWith(" startTime")) return { ok: true, int: 1230 };
+    if (body.endsWith(" endTime")) return { ok: true, int: 1260 };
+    if (body === "XServerTimeMgr _serverTimeZone") return { ok: true, int: 8 };
+    return body === "XScene get_SceneID" ? { ok: true, int: 100003 } : { ok: true, bool: false };
+  };
+  // 2030-01-06 12:30 UTC = 20:30 UTC+8.
+  const T = Date.UTC(2030, 0, 6, 12, 30);
+  await sekhmetOpenNow(q, T);
+  await sekhmetOpenNow(q, T + 2_000);
+  await sekhmetOpenNow(q, T + REFRESH_ACTIVITIES_FAST_MS + 2_000);
+  assert.equal(sent.length, 2);
+});
+
+test("sekhmet: janela no fuso do servidor", () => {
+  const at = (h: number, m: number) => Date.UTC(2030, 0, 6, h, m);
+  assert.equal(inActivityWindow(at(12, 28), 8, 1230, 1260), false); // 20:28
+  assert.equal(inActivityWindow(at(12, 29), 8, 1230, 1260), true); // 1 min antes
+  assert.equal(inActivityWindow(at(12, 59), 8, 1230, 1260), true);
+  assert.equal(inActivityWindow(at(13, 0), 8, 1230, 1260), false); // 21:00, fechou
+  assert.equal(inActivityWindow(at(20, 0), 8, 1230, 1260), false); // 04:00 do dia seguinte
+  assert.equal(inActivityWindow(at(12, 40), 8, 0, 0), false);
 });

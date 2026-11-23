@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** Guild Boss e Sekhmet War entram assim que abrem. Em 2026-11-23 o Guild Boss entrou 42 s depois de abrir e a Sekhmet abriu 09:30 mas o bot so tentou 09:44 (com outras atividades na frente). Agora a checagem dos dois roda a cada 5 s (antes 15 s); aberto um deles, o app para o Continental, o Album de Cards e as diarias em andamento e segura a fila ate entrar (`checkTimedEvents` em `app/src/renderer/renderer.ts`); e, de 1 min antes ate o fim do horario da Sekhmet (lido da lista, no fuso do servidor), o estado e pedido ao servidor a cada 5 s em vez de 1 por minuto (`inActivityWindow` em `app/src/controller/sekhmet.ts`). Uma diaria interrompida assim volta na proxima tentativa. Como testar: `npm test`; ao vivo, o log mostra "Guild Boss aberto: entrando." ate ~5 s depois da abertura (09:00 de Brasilia, seg/qua/sex) e "Sekhmet War aberta: entrando." ate ~10 s depois das 09:30.
+
 - **App:** o Treino ficava parado esperando monstro renascer. Agora, sem EXP por 15 s (antes 45 s), fora de combate e sem monstro a menos de 25 m, ele anda ate o monstro vivo mais perto em todo o raio do ponto (antes so ate 70 m do char) e religa a caca; a caminhada espera ate 30 s conforme a distancia (antes 6 s fixos) e a leitura olha ate 80 entidades (antes 40). Arquivos: `app/src/controller/train.ts` (`SEEK_IDLE_MS`, `pickSeekTarget`, `seekWalkMs`, `readEnemyPositions`) e `app/src/main/train.ts`. Como testar: `npm test`; ao vivo, com o ponto limpo o log mostra "parado sem monstro por perto: indo ate o mais perto (N m)" em ate ~15 s, inclusive com N acima de 70.
 
 ## [0.155.4] - 2026-11-22

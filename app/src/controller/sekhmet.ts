@@ -32,8 +32,19 @@ export const ENCOURAGE_GOLD_BODY = "calls XWorldBossDocument ReqEncourage 0";
 export const EXIT_SEKHMET_BODY = "calls XWorldBossDocument ReqQutiScene 0";
 export const BATTLE_INFO_BODY = "calls XWorldBossDocument ReqBattleInfo 0";
 export const REFRESH_ACTIVITIES_BODY = "calls XActivityDocument SendQueryGetMulActInfo 0";
-// Pedido da lista de atividades ao servidor, no maximo 1 por minuto.
+// Pedido da lista de atividades ao servidor, no maximo 1 por minuto; perto do
+// horario da Sekhmet (1 min antes ate o fim), a cada 5 s pra entrar logo.
 export const REFRESH_ACTIVITIES_MS = 60_000;
+export const REFRESH_ACTIVITIES_FAST_MS = 5_000;
+export const SERVER_TZ_DEFAULT = 8;
+
+// Minuto do dia no fuso do servidor esta em [inicio - 1, fim)? beginmin/endmin da
+// lista sao minutos do dia no fuso do servidor (1230 = 20:30).
+export function inActivityWindow(nowMs: number, tzHours: number, beginMin: number, endMin: number): boolean {
+  if (!(endMin > beginMin)) return false;
+  const m = (((Math.floor(nowMs / 60_000) + tzHours * 60) % 1440) + 1440) % 1440;
+  return m >= beginMin - 1 && m < endMin;
+}
 export const HUNT_ON_BODY = '{"on":1}';
 export { LEAVE_TEAM_BODY };
 
@@ -157,9 +168,20 @@ let lastRefreshAt = -Infinity;
 // Pede ao servidor o estado atual das atividades (a resposta chega depois e vale
 // pra proxima leitura).
 export async function refreshActivities(q: EngineQuery, now = Date.now()): Promise<void> {
-  if (now - lastRefreshAt < REFRESH_ACTIVITIES_MS) return;
+  const since = now - lastRefreshAt;
+  if (since < REFRESH_ACTIVITIES_FAST_MS) return;
+  if (since < REFRESH_ACTIVITIES_MS && !(await nearSekhmetTime(q, now))) return;
   lastRefreshAt = now;
   await q("SKIL", REFRESH_ACTIVITIES_BODY);
+}
+
+async function nearSekhmetTime(q: EngineQuery, now: number): Promise<boolean> {
+  const info = `XActivityDocument GetMulActivityInfoBySystem:${SYS_WORLD_BOSS}`;
+  const begin = num(await q("GETP", `${info} startTime`));
+  const end = num(await q("GETP", `${info} endTime`));
+  if (begin === undefined || end === undefined) return false;
+  const tz = num(await q("GETP", "XServerTimeMgr _serverTimeZone")) ?? SERVER_TZ_DEFAULT;
+  return inActivityWindow(now, tz, begin, end);
 }
 
 export async function sekhmetOpenNow(q: EngineQuery, now = Date.now()): Promise<boolean> {
