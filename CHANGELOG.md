@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+- **App:** o Treino ficava parado esperando monstro renascer. Agora, sem EXP por 15 s (antes 45 s), fora de combate e sem monstro a menos de 25 m, ele anda ate o monstro vivo mais perto em todo o raio do ponto (antes so ate 70 m do char) e religa a caca; a caminhada espera ate 30 s conforme a distancia (antes 6 s fixos) e a leitura olha ate 80 entidades (antes 40). Arquivos: `app/src/controller/train.ts` (`SEEK_IDLE_MS`, `pickSeekTarget`, `seekWalkMs`, `readEnemyPositions`) e `app/src/main/train.ts`. Como testar: `npm test`; ao vivo, com o ponto limpo o log mostra "parado sem monstro por perto: indo ate o mais perto (N m)" em ate ~15 s, inclusive com N acima de 70.
+
 ## [0.155.4] - 2026-11-22
 
 - **App:** a Sekhmet War nao era detectada. O app lia `XActivityDocument IsMulActivityOpening`, mas esse estado e um cache que o jogo so renova com a tela de atividades aberta; sem ela ficava no "vai abrir" do login e o bot perdeu a Sekhmet de 2026-11-22 (todo dia das 20:30 as 21:00 do servidor, UTC+8, ou seja 09:30 as 10:00 de Brasilia). Agora a checagem pede a lista ao servidor (`SendQueryGetMulActInfo`, o mesmo pedido da tela) no maximo 1 vez por minuto antes de ler (`app/src/controller/sekhmet.ts`, `refreshActivities`). Como testar: `npm test` (teste do limite de 1 pedido por minuto); ao vivo, com a atividade Sekhmet ligada, as 09:30 de Brasilia o log mostra "Sekhmet War aberta: entrando." em ate 1 min e 15 s. Sem prova ao vivo (a proxima abre em 2026-11-23 09:30).
