@@ -971,3 +971,6 @@ auto-play ligado), so com comandos que o engine ja tem (GETP, ENTS, OBJV, FIND, 
 - Categoria: o Champion ("Niya Shaman - Champion", 23064 HP contra 11532 do normal) veio com o
   mesmo `_eEntity_Type` 0x19 dos normais, sem o bit Elite 0x80. Separar normal/champion/boss pelo
   tipo nao basta: usar o sufixo do nome, o HP maximo ou o `_type_id`.
+- Engine (filtro de monstros): `TARG <id>` faz essa troca sem o indice, achando o monstro pelo id na
+  hora, e o ENTS passa a mandar o `_type_id` como 10o elemento. Tag propria porque um `SKIL` com corpo
+  desconhecido, num engine antigo, cai no liga/desliga da caca pelos digitos do corpo.
