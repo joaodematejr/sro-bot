@@ -38,7 +38,7 @@ test("lure: flor Normal antes da Legendary; o buff no char manda, sem leitura va
   const { BUFF_GROUPS, buffDue, LURE_BUFF_ID, pickBuff } = await import("../booster");
   const lure = BUFF_GROUPS.find((g) => g.key === "lure")!;
   assert.equal(lure.buffId, LURE_BUFF_ID);
-  // Estoque do xJoao em 2026-11-24: 53 Normal, 0 Legendary.
+  // Estoque do char principal em 2026-11-24: 53 Normal, 0 Legendary.
   assert.equal(pickBuff(lure.items, { 850040036: 53, 850040035: 0 })?.id, 850040036);
   assert.equal(pickBuff(lure.items, { 850040036: 0, 850040035: 2 })?.id, 850040035);
   assert.equal(pickBuff(lure.items, {}), undefined);
