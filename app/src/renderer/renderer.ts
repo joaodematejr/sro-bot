@@ -2415,15 +2415,17 @@ async function onActivityToggle(id: string): Promise<void> {
     contBusy = true;
     try {
       if (trainRunning && !(await stopTrainLoop())) {
-        log("Missao principal: o Treino nao parou a tempo; segue o Treino. Marque \"Ativa\" de novo daqui a pouco.");
+        log("Missao principal: o Treino nao parou a tempo; a missao fica pra depois. Marque \"Ativa\" de novo daqui a pouco.");
         return;
       }
       if (polling) await runMainQuestActivity();
     } finally {
       activitiesRunning = false;
       contBusy = false;
+      // Religa tambem quando a espera estourou: o stopTrain ja foi mandado e o loop
+      // sai sozinho depois (como nas diarias); o resumeTrainLater espera ele sair.
+      if (polling && isChecked("act-train")) resumeTrainLater("da missao principal");
     }
-    if (polling && isChecked("act-train")) resumeTrainLater("da missao principal");
   } else if (id === "act-actchest" && on) {
     actChestNextAt = 0;
     void maybeRunActChests();
