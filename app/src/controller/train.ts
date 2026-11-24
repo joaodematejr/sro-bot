@@ -187,13 +187,16 @@ export const LEAVE_DEFEND_HP_PCT = 60;
 // fora de combate, com HP cheio e nenhum inimigo a menos de SEEK_CLEAR_M, o bot
 // anda ate o inimigo vivo mais perto dentro do raio do ponto (sem ponto, ate
 // SEEK_MAX_M). 2026-11-23: com 45 s e teto de 70 m ele ainda ficava parado
-// esperando renascer; agora 15 s e o raio inteiro do ponto. Andar (TeleportNavigate)
+// esperando renascer; agora 15 s e o raio inteiro do ponto. 2026-11-24 06:15: parado
+// 20 s com um monstro a 22 m que o auto-play nao atacava (ele so pega ate ~16 m) e o
+// SEEK_CLEAR_M de 25 m segurava a busca; agora 15 m, e o tempo parado conta do
+// ultimo EXP ou combate, 6 s. Andar (TeleportNavigate)
 // DESLIGA o auto-play (visto ao vivo 11:34: 26 m em 3 s, auto desligado e o
 // combate comecou com ele parado), entao o main religa a caca ao chegar, ao
 // entrar em combate ou em SEEK_WALK_MAX_MS, o que vier primeiro.
-export const SEEK_IDLE_MS = 15000;
-export const SEEK_COOLDOWN_MS = 15000;
-export const SEEK_CLEAR_M = 25;
+export const SEEK_IDLE_MS = 6000;
+export const SEEK_COOLDOWN_MS = 8000;
+export const SEEK_CLEAR_M = 15;
 export const SEEK_MAX_M = 70;
 export const SEEK_ARRIVE_M = 5;
 export const SEEK_WALK_MAX_MS = 6000;
@@ -1022,11 +1025,12 @@ export async function readPlayersNear(q: EngineQuery, x: number, z: number, radi
 }
 
 // Hora de procurar monstro? (so o que nao precisa ler as entidades)
-export function shouldSeek(s: TrainSnapshot | null, p: TrainProgress, now: number, lastSeekAt: number): boolean {
+// combatAt: ultima leitura em combate (o EXP so sobe quando o monstro morre).
+export function shouldSeek(s: TrainSnapshot | null, p: TrainProgress, now: number, lastSeekAt: number, combatAt = -Infinity): boolean {
   if (!s || !s.inWorld || s.dead || s.inCombat || !s.pos || s.scene === undefined) return false;
   if (p.goingToSpot || p.stopReason || p.pauseReason || s.following) return false;
   if (s.hp !== undefined && s.maxHp && (100 * s.hp) / s.maxHp < LEAVE_MIN_HP_PCT) return false;
-  return now - p.expAt >= SEEK_IDLE_MS && now - lastSeekAt >= SEEK_COOLDOWN_MS;
+  return now - Math.max(p.expAt, combatAt) >= SEEK_IDLE_MS && now - lastSeekAt >= SEEK_COOLDOWN_MS;
 }
 
 // Inimigo vivo mais perto pra ir buscar: null com inimigo ja perto (o auto-play
