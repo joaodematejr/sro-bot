@@ -1026,6 +1026,24 @@ export async function readPlayersNear(q: EngineQuery, x: number, z: number, radi
   return { count, nearestM, nearestLevel };
 }
 
+// Preso em combate: em 2026-11-24 07:27, de volta do Continental, o char ficou ~3,5 min
+// "em combate" com a caca ligada, gastando MP, sem matar (EXP quase parado) e sem
+// tomar dano, com monstros parados a 2 m; a busca (so fora de combate) nao agia.
+// Em combate por COMBAT_STUCK_MS, sem EXP no mesmo tempo e com o HP sempre acima de
+// LEAVE_MIN_HP_PCT (ninguem batendo nele), a IA larga o alvo (XAIComponent.SetTarget
+// com nulo; ela escolhe outro sozinha), recentra a area e a caca e religada por cima.
+// Nada e desligado.
+export const COMBAT_STUCK_MS = 30000;
+export const CLEAR_TARGET_BODY = "callx XEntityMgr get_Player _ai SetTarget 1 -- n";
+export function combatStuck(
+  s: TrainSnapshot | null, p: TrainProgress, now: number, combatSince: number, minHpPct: number, lastUnstickAt: number,
+): boolean {
+  if (!s || !s.inWorld || s.dead || !s.inCombat) return false;
+  if (p.goingToSpot || p.stopReason || p.pauseReason || s.following) return false;
+  if (minHpPct < LEAVE_MIN_HP_PCT) return false;
+  return now - combatSince >= COMBAT_STUCK_MS && now - p.expAt >= COMBAT_STUCK_MS && now - lastUnstickAt >= COMBAT_STUCK_MS;
+}
+
 // Hora de procurar monstro? (so o que nao precisa ler as entidades)
 // combatAt: ultima leitura em combate (o EXP so sobe quando o monstro morre).
 export function shouldSeek(s: TrainSnapshot | null, p: TrainProgress, now: number, lastSeekAt: number, combatAt = -Infinity): boolean {

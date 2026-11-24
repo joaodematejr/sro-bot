@@ -9,6 +9,9 @@ import {
   hpPercent,
   nearestSpotIdx,
   safeToStopHunt,
+  CLEAR_TARGET_BODY,
+  COMBAT_STUCK_MS,
+  combatStuck,
   leaveBlock,
   pickSeekTarget,
   SEEK_COOLDOWN_MS,
@@ -399,6 +402,24 @@ test("parado sem monstro: procura o mais perto dentro do ponto, so com tudo limp
   assert.equal(seekWalkMs(90), 17000);
   assert.equal(seekWalkMs(500), SEEK_WALK_LONG_MS);
   assert.equal(seekBody([1, 2, 3], 100003), "callv3 TeleportDocument TeleportNavigate 3 1 2 3 100003 0");
+});
+
+// 2026-11-24 07:27: ~3,5 min em combate sem matar e sem tomar dano.
+test("preso em combate: larga o alvo so com 30 s sem EXP e sem dano", () => {
+  const s = inMap(1325, 620, { hp: 16181, maxHp: 16181, inCombat: true });
+  const p = { ...newTrainProgress(0), expAt: 0 };
+  const T = COMBAT_STUCK_MS;
+  assert.equal(combatStuck(s, p, T, 0, 100, -Infinity), true);
+  assert.equal(combatStuck(s, p, T - 1, 0, 100, -Infinity), false); // pouco tempo
+  assert.equal(combatStuck(s, { ...p, expAt: 5000 }, T, 0, 100, -Infinity), false); // matou ha pouco
+  assert.equal(combatStuck(s, p, T, 5000, 100, -Infinity), false); // combate novo
+  assert.equal(combatStuck(s, p, T, 0, 80, -Infinity), false); // tomando dano: luta de verdade
+  assert.equal(combatStuck({ ...s, inCombat: false }, p, T, 0, 100, -Infinity), false); // fora de combate: a busca cuida
+  assert.equal(combatStuck(s, { ...p, pauseReason: "pausa pro Continental" }, T, 0, 100, -Infinity), false);
+  assert.equal(combatStuck({ ...s, following: true }, p, T, 0, 100, -Infinity), false);
+  assert.equal(combatStuck(s, p, T, 0, 100, 1), false); // acabou de largar
+  assert.equal(combatStuck(s, p, 2 * T + 1, 0, 100, T), true); // segue preso: tenta de novo
+  assert.equal(CLEAR_TARGET_BODY, "callx XEntityMgr get_Player _ai SetTarget 1 -- n");
 });
 
 test("HP baixo no ponto: troca pro ponto de reserva so fora de combate", () => {
