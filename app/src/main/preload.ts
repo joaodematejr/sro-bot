@@ -58,6 +58,9 @@ contextBridge.exposeInMainWorld("sro", {
   runFirm: (cfg: { stopAfter: number; maxQuality: number; allowItems: number[]; askHelp: boolean; allowTeleport: boolean; reroll?: boolean; rerollTarget?: number }) =>
     ipcRenderer.invoke("engine:firm", cfg),
   stopFirm: () => ipcRenderer.invoke("engine:firmstop"),
+  runMainQuest: (cfg: { allowTeleport: boolean; hunt: boolean; maxQuests: number }) =>
+    ipcRenderer.invoke("engine:mainquest", cfg),
+  stopMainQuest: () => ipcRenderer.invoke("engine:mainqueststop"),
   runGuild: (cfg: { signIn: string; chests: boolean; salary: boolean; redPacket: boolean; storeWeekly?: boolean }) =>
     ipcRenderer.invoke("engine:guild", cfg),
   stopGuild: () => ipcRenderer.invoke("engine:guildstop"),

@@ -34,6 +34,8 @@ import { runDemonTower, stopDemonTower } from "./tower";
 import { hpPercent, readChannel, readEnemiesAround, readTrainSnapshot, safeToStopHunt, type TrainConfig } from "../controller/train";
 import type { FirmConfig } from "../controller/firm";
 import { runFirm, stopFirm } from "./firm";
+import type { MainQuestConfig } from "../controller/mainquest";
+import { runMainQuest, stopMainQuest } from "./mainquest";
 import type { GuildConfig } from "../controller/guild";
 import { runGuild, stopGuild } from "./guild";
 import type { GuildBossConfig } from "../controller/guildboss";
@@ -486,6 +488,16 @@ ipcMain.handle("engine:firm", async (_e, cfg: FirmConfig) => {
 
 ipcMain.handle("engine:firmstop", async () => {
   stopFirm();
+});
+
+// Missao principal: aceita, segue o objetivo e entrega, uma missao atras da outra.
+ipcMain.handle("engine:mainquest", async (_e, cfg: MainQuestConfig) => {
+  const push = (m: string) => win?.webContents.send("sro:log", "[missao] " + m);
+  return runMainQuest("127.0.0.1", HOST_PORT, cfg, push);
+});
+
+ipcMain.handle("engine:mainqueststop", async () => {
+  stopMainQuest();
 });
 
 // Guild utilities: sign-in, baus do sign-in, salario (red packet so avisa).

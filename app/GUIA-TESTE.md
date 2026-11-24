@@ -83,6 +83,12 @@ Depois, nos dois:
      comum por padrão; Tablets e Elements ficam protegidos (dá para liberar um
      item pelo ID no painel). Com 3 ou mais entregas, conclui o dia (o "Submit"
      da janela), que dá o prêmio total com bastante EXP;
+   - **Missão principal**: aceita a main quest, vai até o NPC pelo próprio
+     jogo, caça os monstros do objetivo, entrega e segue pra próxima. Roda a
+     cada Iniciar bot, antes do Treino, até a linha acabar ou a próxima pedir
+     nível maior (no máximo 1 h por vez). Objetivos de usar item, escolta ou
+     fase ficam pra fazer na mão: o log avisa qual. Ainda sem prova ao vivo de
+     aceitar e entregar uma main quest;
    - **Guild utilities**: sign-in da guilda (Normal ou Luxury, em gold), baús do
      sign-in e salário. Nunca o sign-in de Silk;
    - **Baús de atividade diária**: pega os baús de 30 a 150 pontos assim que
