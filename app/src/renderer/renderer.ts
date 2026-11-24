@@ -1572,7 +1572,7 @@ async function showNearbySpecies(): Promise<void> {
     row.className = "flex items-center gap-2 text-xs text-gray-300";
     const label = document.createElement("span");
     label.className = "flex-1";
-    label.textContent = `${sp.name || "sem nome"} Lv.${sp.level} (${CATEGORY_LABEL[sp.kind]}, ${sp.count} por perto)`;
+    label.textContent = `${sp.name || "sem nome"} Lv.${sp.level}, HP ${sp.maxHp} (${CATEGORY_LABEL[sp.kind]}, ${sp.count} por perto)`;
     const add = document.createElement("button");
     add.className = "btn";
     const already = filterSpecies.some((f) => f.id === sp.id);
@@ -1580,7 +1580,7 @@ async function showNearbySpecies(): Promise<void> {
     add.disabled = already;
     add.addEventListener("click", () => {
       if (filterSpecies.some((f) => f.id === sp.id)) return;
-      filterSpecies.push({ id: sp.id, name: sp.name });
+      filterSpecies.push({ id: sp.id, name: `${sp.name} (HP ${sp.maxHp})` });
       saveTrainConfig();
       showFilterSpecies();
       add.textContent = "ignorada";

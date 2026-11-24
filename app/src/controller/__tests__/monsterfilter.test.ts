@@ -12,7 +12,9 @@ import {
   type MonsterFilterConfig,
   nearbySpecies,
   newFilterMemory,
+  PENDING_MS,
   SWAP_MAX_M,
+  swapLabels,
   targBody,
   targResult,
 } from "../monsterfilter";
@@ -91,25 +93,56 @@ test("filtro: sem permitido ate SWAP_MAX_M, deixa lutar com o ignorado", () => {
   assert.equal(monsterFilterStep(snap(10, [ent(10, 3, 0), ok]), noMage, newFilterMemory(), 0).kind, "swap");
 });
 
-test("filtro: o mesmo ignorado voltando 2 vezes em 30 s fica 60 s sem troca", () => {
+test("filtro: ignorado que volta com o substituto vivo (aggro) fica 60 s sem troca na 2a volta", () => {
+  // Mage 10 alvo; a troca mandou pro Shaman 12, que segue vivo.
   const s = snap(10, [ent(10, 3, 0), ent(12, 10, 0, { typeId: SHAMAN })]);
-  let m = afterSwap(newFilterMemory(), 10, 1000);
-  assert.equal(monsterFilterStep(s, noMage, m, 2000).kind, "swap");
-  m = afterSwap(m, 10, 5000);
-  const st = monsterFilterStep(s, noMage, m, 6000);
+  let m = afterSwap(newFilterMemory(), 10, 12, false, 1000);
+  const b1 = monsterFilterStep(s, noMage, m, 1000 + PENDING_MS);
+  assert.ok(b1.kind === "swap" && b1.bounce, "1a volta: troca de novo e marca a volta");
+  m = afterSwap(m, 10, 12, true, 3000);
+  const b2 = monsterFilterStep(s, noMage, m, 3000 + PENDING_MS);
+  assert.ok(b2.kind === "swap" && b2.bounce, "2a volta: ainda troca");
+  m = afterSwap(m, 10, 12, true, 5000);
+  const st = monsterFilterStep(s, noMage, m, 5000 + PENDING_MS);
   assert.deepEqual(st.kind === "keep" && st.why, "insiste");
   assert.equal(monsterFilterStep(s, noMage, m, 5000 + GIVE_UP_MS + 1).kind, "swap");
-  // Duas trocas longe uma da outra nao contam como insistencia.
-  let m2 = afterSwap(newFilterMemory(), 10, 0);
-  m2 = afterSwap(m2, 10, INSIST_WINDOW_MS + 1);
-  assert.equal(monsterFilterStep(s, noMage, m2, INSIST_WINDOW_MS + 2).kind, "swap");
+  // Voltas longe uma da outra nao somam.
+  let m2 = afterSwap(newFilterMemory(), 10, 12, true, 0);
+  m2 = afterSwap(m2, 10, 12, true, INSIST_WINDOW_MS + 1);
+  assert.equal(monsterFilterStep(s, noMage, m2, INSIST_WINDOW_MS + 1 + PENDING_MS).kind, "swap");
+});
+
+test("filtro: ignorado escolhido de novo depois que o substituto morreu nao e insistencia", () => {
+  // Visto ao vivo em 2026-11-24: o Mage trocado aos 24,8 s voltou aos 38,6 s, com o
+  // Shaman ja morto. E a IA pegando o mais perto, nao aggro: troca sem contar.
+  let m = newFilterMemory();
+  for (let k = 0; k < 5; k++) {
+    const s = snap(10, [ent(10, 3, 0), ent(12, 10, 0, { typeId: SHAMAN, dead: k > 0 }), ent(13 + k, 12, 0, { typeId: SHAMAN })]);
+    const st = monsterFilterStep(s, noMage, m, k * 10000);
+    assert.equal(st.kind, "swap", `volta ${k}`);
+    if (st.kind !== "swap") return;
+    assert.equal(st.bounce, false);
+    m = afterSwap(m, 10, st.to.id, st.bounce, k * 10000);
+  }
+  assert.deepEqual(m.giveUp, {});
+});
+
+test("filtro: troca mandada espera o jogo aplicar antes de tentar de novo", () => {
+  const s = snap(10, [ent(10, 3, 0), ent(12, 10, 0, { typeId: SHAMAN })]);
+  const m = afterSwap(newFilterMemory(), 10, 12, false, 1000);
+  // O ENTS ainda mostra o alvo velho: nao manda outro TARG.
+  assert.equal(monsterFilterStep(s, noMage, m, 1000 + PENDING_MS - 1).kind, "none");
+  assert.equal(monsterFilterStep(s, noMage, m, 1000 + PENDING_MS).kind, "swap");
+  // Outro ignorado virando alvo nesse meio tempo troca na hora.
+  const s2 = snap(11, [ent(11, 3, 0), ent(12, 10, 0, { typeId: SHAMAN })]);
+  assert.equal(monsterFilterStep(s2, noMage, m, 1100).kind, "swap");
 });
 
 test("filtro: a memoria esquece o que passou", () => {
   let m = newFilterMemory();
-  for (let i = 0; i < 50; i++) m = afterSwap(m, 1000 + i, i * 1000);
-  m = afterSwap(m, 1, 10 * 60 * 1000);
-  assert.deepEqual(Object.keys(m.tries), ["1"]);
+  for (let i = 0; i < 50; i++) m = afterSwap(m, 1000 + i, 1, true, i * 1000);
+  m = afterSwap(m, 1, 2, true, 10 * 60 * 1000);
+  assert.deepEqual(Object.keys(m.bounces), ["1"]);
   assert.deepEqual(m.giveUp, {});
 });
 
@@ -148,7 +181,13 @@ test("filtro: especies em volta pra tela, sem repetir", () => {
     ent(5, 0, 0, { typeId: undefined }),
   ]);
   assert.deepEqual(list, [
-    { id: MAGE, name: "Niya Mage", level: 77, kind: "monster", count: 2 },
-    { id: SHAMAN, name: "Niya Shaman", level: 78, kind: "monster", count: 1 },
+    { id: MAGE, name: "Niya Mage", level: 77, maxHp: 11170, kind: "monster", count: 2 },
+    { id: SHAMAN, name: "Niya Shaman", level: 78, maxHp: 11170, kind: "monster", count: 1 },
   ]);
+});
+
+test("filtro: log separa especies de mesmo nome pelo HP", () => {
+  assert.deepEqual(swapLabels(ent(1, 0, 0), ent(2, 0, 0, { typeId: SHAMAN, name: "Niya Shaman" })), ["Niya Mage", "Niya Shaman"]);
+  assert.deepEqual(swapLabels(ent(1, 0, 0), ent(2, 0, 0, { typeId: 999, maxHp: 111700 })),
+    ["Niya Mage (HP 11170)", "Niya Mage (HP 111700, outra especie)"]);
 });

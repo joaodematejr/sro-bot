@@ -33,25 +33,37 @@ export interface MonsterFilterConfig {
 // Distancia maxima do char pro monstro novo. Mais longe que isso o char sairia
 // do ponto atras de um alvo; sem nenhum ate aqui, luta com o ignorado mesmo.
 export const SWAP_MAX_M = 50;
-// O mesmo monstro ignorado voltando a ser alvo INSIST_MAX vezes em INSIST_WINDOW_MS
-// (ele esta batendo no char e a lista de odio puxa de volta): desiste dele por
-// GIVE_UP_MS e deixa a IA matar. Trocar sem parar deixaria o char apanhando.
+// Insistencia: o ignorado volta a ser alvo enquanto o monstro pra onde a troca
+// mandou ainda esta vivo (a lista de odio puxou de volta; ele deve estar batendo no
+// char). Na INSIST_MAX-esima volta dentro de INSIST_WINDOW_MS desiste dele por
+// GIVE_UP_MS e deixa a IA matar: trocar sem parar deixaria o char apanhando. Voltar
+// depois que o substituto morreu e so a IA escolhendo o mais perto de novo (visto
+// ao vivo em 2026-11-24, 14 s depois): troca de novo sem contar.
 export const INSIST_MAX = 2;
 export const INSIST_WINDOW_MS = 30000;
 export const GIVE_UP_MS = 60000;
 
+// O TARG so enfileira: o SetTarget roda no proximo frame. Ate la o ENTS ainda mostra
+// o alvo velho; sem esperar, a troca sairia duas vezes e contaria como insistencia.
+export const PENDING_MS = 1500;
+// Laco proprio do filtro: no ponto do teste (Niya, 2026-11-24) o char mata em 1,5 a
+// 3 s; no ritmo do loop do Treino (1 a 3 s) quase todo ignorado morria antes.
+export const FILTER_POLL_MS = 300;
+
 export interface FilterMemory {
-  tries: Record<number, number[]>; // id do monstro -> quando a troca saiu dele
+  bounces: Record<number, number[]>; // id do ignorado -> quando voltou com o substituto vivo
   giveUp: Record<number, number>; // id -> ate quando deixa lutar
+  pending?: { from: number; until: number }; // troca mandada, ainda nao aplicada
+  last?: { from: number; to: number }; // ultima troca (de quem pra quem)
 }
 
 export function newFilterMemory(): FilterMemory {
-  return { tries: {}, giveUp: {} };
+  return { bounces: {}, giveUp: {} };
 }
 
 export type FilterStep =
   | { kind: "none" }
-  | { kind: "swap"; from: MapEntity; to: MapEntity; dist: number }
+  | { kind: "swap"; from: MapEntity; to: MapEntity; dist: number; bounce: boolean }
   | { kind: "keep"; target: MapEntity; why: "sem-permitido" | "insiste" };
 
 const MONSTER_KINDS = new Set<string>(["monster", "elite", "boss"]);
@@ -87,6 +99,7 @@ export function monsterFilterStep(
   if (!filterActive(cfg) || !snap.target) return { kind: "none" };
   const t = snap.ents.find((e) => e.id === snap.target);
   if (!t || !alive(t) || !isIgnored(t, cfg)) return { kind: "none" };
+  if (mem.pending && mem.pending.from === t.id && now < mem.pending.until) return { kind: "none" };
   if ((mem.giveUp[t.id] ?? 0) > now) return { kind: "keep", target: t, why: "insiste" };
   let best: MapEntity | undefined;
   let bestD = Infinity;
@@ -96,27 +109,32 @@ export function monsterFilterStep(
     if (d <= maxM && d < bestD) { best = e; bestD = d; }
   }
   if (!best) return { kind: "keep", target: t, why: "sem-permitido" };
-  return { kind: "swap", from: t, to: best, dist: bestD };
+  const last = mem.last;
+  const bounce = !!last && last.from === t.id && snap.ents.some((e) => e.id === last.to && alive(e));
+  return { kind: "swap", from: t, to: best, dist: bestD, bounce };
 }
 
-// Anota a troca que saiu de `fromId`. Na INSIST_MAX-esima dentro da janela, desiste
-// desse monstro por GIVE_UP_MS. Limpa o que ja passou (a memoria nao cresce).
-export function afterSwap(mem: FilterMemory, fromId: number, now: number): FilterMemory {
-  const tries: Record<number, number[]> = {};
-  for (const [k, v] of Object.entries(mem.tries)) {
+// Anota a troca mandada (`bounce` = o ignorado tinha voltado com o substituto vivo).
+// Na INSIST_MAX-esima volta dentro da janela, desiste dele por GIVE_UP_MS. Limpa o
+// que ja passou (a memoria nao cresce).
+export function afterSwap(mem: FilterMemory, fromId: number, toId: number, bounce: boolean, now: number): FilterMemory {
+  const bounces: Record<number, number[]> = {};
+  for (const [k, v] of Object.entries(mem.bounces)) {
     const keep = v.filter((at) => now - at < INSIST_WINDOW_MS);
-    if (keep.length) tries[Number(k)] = keep;
+    if (keep.length) bounces[Number(k)] = keep;
   }
   const giveUp: Record<number, number> = {};
   for (const [k, until] of Object.entries(mem.giveUp)) if (until > now) giveUp[Number(k)] = until;
-  const mine = [...(tries[fromId] ?? []), now];
-  if (mine.length >= INSIST_MAX) {
-    giveUp[fromId] = now + GIVE_UP_MS;
-    delete tries[fromId];
-  } else {
-    tries[fromId] = mine;
+  if (bounce) {
+    const mine = [...(bounces[fromId] ?? []), now];
+    if (mine.length >= INSIST_MAX) {
+      giveUp[fromId] = now + GIVE_UP_MS;
+      delete bounces[fromId];
+    } else {
+      bounces[fromId] = mine;
+    }
   }
-  return { tries, giveUp };
+  return { bounces, giveUp, pending: { from: fromId, until: now + PENDING_MS }, last: { from: fromId, to: toId } };
 }
 
 // Resposta do TARG: "ok" trocou; "old-engine" = engine sem a tag (tag desconhecida
@@ -139,14 +157,32 @@ export function monsterLabel(e: MapEntity): string {
   return `${e.name || "monstro"}${e.level ? ` Lv.${e.level}` : ""}`;
 }
 
+// Par da troca pro log. O jogo tem especies diferentes com o mesmo nome (Niya Mage
+// de 11170 e de 111700 de HP, visto em 2026-11-24): com nome igual, mostra o HP.
+export function swapLabels(from: MapEntity, to: MapEntity): [string, string] {
+  const a = from.name || "monstro";
+  const b = to.name || "monstro";
+  if (a !== b) return [a, b];
+  return [`${a} (HP ${from.maxHp})`, `${b} (HP ${to.maxHp}, outra especie)`];
+}
+
 // Especies de monstro em volta, sem repetir, pra tela escolher o que ignorar.
-export function nearbySpecies(ents: MapEntity[]): { id: number; name: string; level: number; kind: MonsterCategory; count: number }[] {
-  const out = new Map<number, { id: number; name: string; level: number; kind: MonsterCategory; count: number }>();
+export interface NearbySpecies {
+  id: number;
+  name: string;
+  level: number;
+  maxHp: number; // separa especies de mesmo nome
+  kind: MonsterCategory;
+  count: number;
+}
+
+export function nearbySpecies(ents: MapEntity[]): NearbySpecies[] {
+  const out = new Map<number, NearbySpecies>();
   for (const e of ents) {
     if (!isMonster(e) || e.typeId === undefined) continue;
     const cur = out.get(e.typeId);
     if (cur) cur.count++;
-    else out.set(e.typeId, { id: e.typeId, name: e.name, level: e.level, kind: e.kind as MonsterCategory, count: 1 });
+    else out.set(e.typeId, { id: e.typeId, name: e.name, level: e.level, maxHp: e.maxHp, kind: e.kind as MonsterCategory, count: 1 });
   }
   return [...out.values()].sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
 }
