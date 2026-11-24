@@ -4,6 +4,8 @@ Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). 
 
 ## [Nao lancado]
 
+## [0.155.6] - 2026-11-24
+
 - **App:** o Treino ainda ficava parado com monstro a 20 e poucos metros. Visto ao vivo em 2026-11-24 06:15 (0.155.5): 20 s parado com um monstro a 22 m que o auto-play do jogo nao atacava (ele so pega ate ~16 m), e a busca nao saia porque qualquer monstro a menos de 25 m contava como "perto". Agora "perto" e ate 15 m, o tempo parado conta do ultimo EXP ou da ultima leitura em combate e a busca sai depois de 6 s (antes 15 s), com 8 s entre buscas (antes 15 s). Arquivos: `app/src/controller/train.ts` (`SEEK_CLEAR_M`, `SEEK_IDLE_MS`, `SEEK_COOLDOWN_MS`, `shouldSeek`) e `app/src/main/train.ts` (`lastCombatAt`). Como testar: `npm test`; ao vivo, com o monstro mais perto entre 15 e 25 m e o char parado, o log mostra "parado sem monstro por perto: indo ate o mais perto (N m)" em ate ~8 s.
 
 ## [0.155.5] - 2026-11-23
