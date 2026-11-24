@@ -396,6 +396,8 @@ test("parado sem monstro: procura o mais perto dentro do ponto, so com tudo limp
   // Fora do raio do ponto: nada.
   assert.equal(pickSeekTarget(pos, [[1325 + 200, 0, 620]], A), null);
   assert.equal(pickSeekTarget(pos, [[1325, 0, 730]], A), null);
+  // Perto da borda (90 m de 100): o auto-play sairia do raio atras dele; fica.
+  assert.equal(pickSeekTarget(pos, [[1325, 0, 710]], A), null);
   // Sem ponto salvo: so ate 70 m.
   assert.equal(pickSeekTarget(pos, [[1325, 0, 700]]), null);
   assert.equal(seekWalkMs(10), SEEK_WALK_MAX_MS);
