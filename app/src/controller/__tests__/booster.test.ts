@@ -33,3 +33,20 @@ test("buffs: dano usa o de dano e absorcao antes do so de dano; validade por gru
   assert.equal(untilOf({ exp: { until: 7 }, dano: { until: 9 } }, "dano"), 9);
   assert.equal(untilOf(null, "vip"), 0);
 });
+
+test("lure: flor Normal antes da Legendary; o buff no char manda, sem leitura vale a validade", async () => {
+  const { BUFF_GROUPS, buffDue, LURE_BUFF_ID, pickBuff } = await import("../booster");
+  const lure = BUFF_GROUPS.find((g) => g.key === "lure")!;
+  assert.equal(lure.buffId, LURE_BUFF_ID);
+  // Estoque do xJoao em 2026-11-24: 53 Normal, 0 Legendary.
+  assert.equal(pickBuff(lure.items, { 850040036: 53, 850040035: 0 })?.id, 850040036);
+  assert.equal(pickBuff(lure.items, { 850040036: 0, 850040035: 2 })?.id, 850040035);
+  assert.equal(pickBuff(lure.items, {}), undefined);
+  // Buff ativo: nao usa, mesmo com a validade vencida.
+  assert.equal(buffDue(true, 0, 10), false);
+  // Buff sumiu (reconectou): usa, mesmo com validade guardada.
+  assert.equal(buffDue(false, 100, 10), true);
+  // Sem leitura: vale a validade.
+  assert.equal(buffDue(undefined, 100, 10), false);
+  assert.equal(buffDue(undefined, 100, 100), true);
+});

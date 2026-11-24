@@ -13,13 +13,16 @@ export interface Booster {
   minutes: number;
 }
 
-export type BuffKey = "exp" | "dano" | "vip";
+export type BuffKey = "exp" | "dano" | "vip" | "lure";
 
 export interface BuffGroup {
   key: BuffKey;
   label: string;
   items: Booster[]; // ordem de uso
+  buffId?: number; // buff no char: com ele lido, decide pelo buff e nao pela validade guardada
 }
+
+export const LURE_BUFF_ID = 338;
 
 // Exp Booster: 200% de 1 h, 200% de 2 h, 100% de 1 h.
 export const BOOSTERS: Booster[] = [
@@ -42,6 +45,20 @@ export const BUFF_GROUPS: BuffGroup[] = [
     ],
   },
   { key: "vip", label: "VIP STR/INT", items: [{ id: 850040014, name: "VIP Strength and Intellect Increase Scroll", minutes: 60 }] },
+  // Lure: a Demonic Domain Flower puxa monstro num raio de 40 m (buff 338 no char).
+  // Medido em 2026-11-10 sem ganho de EXP nos pontos 2 e 1 (HP minimo 87%);
+  // ligado a pedido do usuario em 2026-11-24. A Normal (20 min) primeiro, a
+  // Legendary I (1 h) depois. Decide pelo buff no char, entao volta sozinha
+  // depois de reconectar ou de o buff cair antes da hora.
+  {
+    key: "lure",
+    label: "flor (lure)",
+    buffId: LURE_BUFF_ID,
+    items: [
+      { id: 850040036, name: "Demonic Domain Flower - Normal", minutes: 20 },
+      { id: 850040035, name: "Demonic Domain Flower - Legendary I", minutes: 60 },
+    ],
+  },
 ];
 
 export function pickBuff(items: Booster[], stock: Record<number, number | undefined>): Booster | undefined {
@@ -65,6 +82,12 @@ export function boosterUntil(b: Booster, usedAt: number): number {
 
 export function boosterDue(until: number, now: number): boolean {
   return now >= until;
+}
+
+// Grupo com buff lido no char: o buff manda (ativo, nao usa; ausente, usa mesmo
+// com validade guardada, ex.: depois de reconectar). Sem leitura, vale a validade.
+export function buffDue(active: boolean | undefined, until: number, now: number): boolean {
+  return active === undefined ? boosterDue(until, now) : !active;
 }
 
 // Validade guardada: formato novo {exp: {until}, dano: {...}} ou o antigo

@@ -121,7 +121,7 @@ const FIGHT_CLEAR_MAX_MS = 12000;
 // Time: confere a cada 5 min (lista e entrada custam ~1 min de leituras).
 const TEAM_EVERY_MS = 5 * 60 * 1000;
 const TEAM_FIRST_MS = 30000;
-// Buffs de item (Exp Booster, dano, VIP): confere a cada 1 min, so cacando no ponto.
+// Buffs de item (Exp Booster, dano, VIP, flor): confere a cada 1 min, so cacando no ponto.
 const BOOSTER_EVERY_MS = 60 * 1000;
 const LEVELING_EVERY_MS = 30 * 1000;
 // Suprimentos (mochila e pocao dos espacos do auto-play): so le e avisa.
@@ -522,10 +522,10 @@ export async function runTrain(
       await levelUpSkills(q, s.level, log).catch((e) => log("skills: falhou (" + String(e).slice(0, 100) + ")."));
     }
     // Buffs so cacando no ponto (nao viajando, nao parando, vivo e em mundo).
-    if ((cfg.booster || cfg.buffDamage || cfg.buffVip) && s?.inWorld && !s.dead && !prog.goingToSpot && !prog.stopReason && !prog.pauseReason
+    if ((cfg.booster || cfg.buffDamage || cfg.buffVip || cfg.lure) && s?.inWorld && !s.dead && !prog.goingToSpot && !prog.stopReason && !prog.pauseReason
       && atSpot(s, spot) && now >= nextBooster) {
       nextBooster = now + BOOSTER_EVERY_MS;
-      await maybeUseBuffs(q, { exp: cfg.booster, dano: cfg.buffDamage, vip: cfg.buffVip }, log).catch(() => undefined);
+      await maybeUseBuffs(q, { exp: cfg.booster, dano: cfg.buffDamage, vip: cfg.buffVip, lure: cfg.lure }, log).catch(() => undefined);
     }
     // Berserk: o botao so aparece com a barra cheia; usa so em combate no ponto.
     if (cfg.berserk !== false && now >= nextBerserk && shouldBerserk(s, prog.goingToSpot)) {

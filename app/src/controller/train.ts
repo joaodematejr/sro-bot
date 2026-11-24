@@ -93,6 +93,7 @@ export interface TrainConfig {
   booster?: boolean; // cacando no ponto, usa Exp Booster da mochila (um por vez)
   buffDamage?: boolean; // idem com o pergaminho de dano (30 min)
   buffVip?: boolean; // idem com o VIP Scroll de STR/INT (1 h)
+  lure?: boolean; // idem com a Demonic Domain Flower (puxa monstro 40 m), pelo buff no char
   berserk?: boolean; // ativa o modo Berserk quando o botao aparece (ligado se ausente)
   devil?: boolean; // clica no devil uma vez por minuto em combate (ligado se ausente)
   trainingTime?: boolean; // abre o training time x10 guardado, 30 min por vez, cacando no ponto (ligado se ausente)
