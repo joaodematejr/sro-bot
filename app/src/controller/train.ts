@@ -76,6 +76,7 @@ export interface TrainSpot {
 }
 
 import type { BuffTarget, TeamConfig } from "./team";
+import type { MonsterFilterConfig } from "./monsterfilter";
 
 export interface TrainConfig {
   deathLimit: number; // para depois de N mortes (0 = nunca)
@@ -103,6 +104,7 @@ export interface TrainConfig {
   sellJunk?: boolean; // mochila com menos de 15 livres: vende a lista fixa de lixo
   avoidPlayers?: boolean; // outro jogador cacando perto por 2 min: troca de canal ou de ponto (ligado se ausente)
   reviveScroll?: boolean; // morto: revive no local com o Resurrection scroll da mochila (nao perde EXP)
+  monsterFilter?: MonsterFilterConfig; // alvo do auto-play numa especie/categoria ignorada: troca pro permitido mais perto
 }
 
 export const DEFAULT_TRAIN_CONFIG: TrainConfig = { deathLimit: 0, setupPotions: true };

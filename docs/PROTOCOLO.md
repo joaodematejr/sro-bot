@@ -31,7 +31,8 @@ quadros.
 | `FIND` | texto | Classes cujo nome contém o texto, com métodos, tipos dos parâmetros e se têm singleton (grava em `files/sro_find.txt` no aparelho). |
 | `SKIL` | ação | Liga ou desliga a caça (`{"on":1}` ou `{"on":0}`), ou chama um método (abaixo). |
 | `MOVE` | `x y z` | Anda até o ponto (mesma cena). |
-| `ENTS` | raio em m (padrão 120) | Tudo o que o mapa precisa numa consulta: `me` (x, z, id e `target`, o alvo do auto-play), `ents` = `[tipo, id, x, z, nível, morto, hp, maxHp, "nome"]` (até 150, nome em UTF-8) e `drops` = `[x, z, item, qtd]` (itens no chão, até 80). Ids são os 32 bits de baixo. Engine antigo responde o estado do jogador (tag desconhecida). |
+| `ENTS` | raio em m (padrão 120) | Tudo o que o mapa precisa numa consulta: `me` (x, z, id e `target`, o alvo do auto-play), `ents` = `[tipo, id, x, z, nível, morto, hp, maxHp, "nome", espécie]` (até 150, nome em UTF-8; espécie = `_type_id`, ausente em engine antigo) e `drops` = `[x, z, item, qtd]` (itens no chão, até 80). Ids são os 32 bits de baixo. Engine antigo responde o estado do jogador (tag desconhecida). |
+| `TARG` | id (32 bits de baixo, como no ENTS) | Troca o alvo do auto-play (`XAIComponent.SetTarget`) pro monstro vivo de id, sem desligar a caça. Recusa jogador, pet e morto. `{"ok":true,"targ":id}`; engine antigo responde o estado do jogador (sem `targ`). |
 
 ## Caminho do `GETP`
 

@@ -100,6 +100,21 @@ import { sellJunk } from "./sell";
 import { shouldSell } from "../controller/sell";
 import { gameDay } from "../controller/daily";
 import { queryPlayer, sendCommand } from "./engine";
+import { MAP_RADIUS_M, parseEnts } from "../controller/map";
+import {
+  afterSwap,
+  CATEGORY_LABEL,
+  FILTER_POLL_MS,
+  filterActive,
+  type MonsterFilterConfig,
+  monsterFilterStep,
+  monsterLabel,
+  newFilterMemory,
+  SWAP_MAX_M,
+  swapLabels,
+  targBody,
+  targResult,
+} from "../controller/monsterfilter";
 
 type Log = (msg: string) => void;
 
@@ -349,6 +364,71 @@ async function runPartyStep(q: Query, step: PartyStep, log: Log): Promise<void> 
   }
 }
 
+// Laco do filtro de monstros (ver controller/monsterfilter.ts): a cada
+// FILTER_POLL_MS, com a porta aberta, le o alvo e os monstros (ENTS, ~40 ms) e
+// manda o TARG se o alvo for ignorado. Sai quando `running` vira falso.
+async function runMonsterFilter(
+  q: Query,
+  cfg: MonsterFilterConfig,
+  log: Log,
+  gate: () => boolean,
+  running: () => boolean,
+): Promise<void> {
+  const parts = [
+    ...(cfg.categories ?? []).map((c) => CATEGORY_LABEL[c]),
+    ...(cfg.species ?? []).map((s) => s.name || `especie ${s.id}`),
+  ];
+  log(`filtro de monstros ligado: ignorando ${parts.join(", ")}.`);
+  let mem = newFilterMemory();
+  let noSpeciesWarned = false;
+  let keepLog = "";
+  let swaps = 0;
+  let lastSwapLog = "";
+  let swapLogAt = -Infinity;
+  while (running()) {
+    await sleep(FILTER_POLL_MS);
+    if (!gate() || !running()) continue;
+    try {
+      const snap = parseEnts(await q("ENTS", String(MAP_RADIUS_M)), new Set());
+      if (!snap) continue;
+      if (!noSpeciesWarned && cfg.species?.length && snap.ents.some((e) => e.kind === "monster") && !snap.ents.some((e) => e.typeId !== undefined)) {
+        noSpeciesWarned = true;
+        log("filtro de monstros: o engine instalado nao manda a especie do monstro; so as categorias valem ate reinjetar o engine.");
+      }
+      const now = Date.now();
+      const st = monsterFilterStep(snap, cfg, mem, now);
+      if (st.kind === "swap") {
+        if (!gate()) continue;
+        const res = targResult(await q("TARG", targBody(st.to.id)));
+        if (res === "old-engine") {
+          log("filtro de monstros: o engine instalado nao troca o alvo (falta o TARG); reinjete o engine pra usar o filtro.");
+          return;
+        }
+        if (res !== "ok") continue;
+        mem = afterSwap(mem, st.from.id, st.to.id, st.bounce, now);
+        keepLog = "";
+        swaps++;
+        // Uma linha por par de monstros a cada minuto; o resto vira contagem.
+        const [fromTxt, toTxt] = swapLabels(st.from, st.to);
+        const text = `filtro: largando ${fromTxt} (ignorado) e indo pro ${toTxt}`;
+        if (text !== lastSwapLog || now - swapLogAt >= 60000) {
+          log(`${text} a ${Math.round(st.dist)} m${swaps > 1 ? ` (${swaps} trocas ate agora)` : ""}.`);
+          lastSwapLog = text;
+          swapLogAt = now;
+        }
+      } else if (st.kind === "keep") {
+        const text = st.why === "insiste"
+          ? `filtro: ${monsterLabel(st.target)} voltou a ser alvo (deve estar batendo no char): deixando matar`
+          : `filtro: so ${monsterLabel(st.target)} (ignorado) ate ${SWAP_MAX_M} m: deixando matar`;
+        if (text !== keepLog) log(text + ".");
+        keepLog = text;
+      }
+    } catch {
+      /* leitura falhou: tenta no proximo giro */
+    }
+  }
+}
+
 export async function runTrain(
   host: string,
   port: number,
@@ -438,6 +518,15 @@ export async function runTrain(
   let combatSince = 0;
   let combatMinHp = 100;
   let lastUnstickAt = -Infinity;
+  // Filtro de monstros: laco proprio (FILTER_POLL_MS) que so age com a porta
+  // aberta. O loop abre a porta cacando (vivo, sem viagem, sem parada ou pausa) e
+  // fecha antes de andar, parar a caca ou trocar de canal.
+  const filterCfg = filterActive(cfg.monsterFilter) ? cfg.monsterFilter : undefined;
+  let filterGate = false;
+  let loopDone = false;
+  const filterLoop = filterCfg
+    ? runMonsterFilter(q, filterCfg, log, () => filterGate, () => !stopRequested && !loopDone)
+    : Promise.resolve();
   // Skills e maestrias: confere na partida e a cada nivel novo (so faz algo se o
   // nivel do char passou das maestrias usadas).
   let skillsCheckedLevel = -1;
@@ -461,6 +550,8 @@ export async function runTrain(
   while (!stopRequested) {
     const now = Date.now();
     const s = await readTrainSnapshot(q);
+    // Porta do filtro de monstros: cacando de fato (o passo do loop ainda pode fechar).
+    const huntingNow = () => !!s?.inWorld && !s.dead && !prog.goingToSpot && !prog.stopReason && pauseRequested === null;
     const party = partyCfg && s?.inWorld && !s.dead ? await readParty(q, partyCfg).catch(() => undefined) : undefined;
     if (party && s) {
       const followingNow = !!partyCfg?.follow && party.inTeam && !party.leader && party.following === true;
@@ -620,16 +711,19 @@ export async function runTrain(
     }
     if (pauseRequested === null && combatStuck(s, prog, now, combatSince, combatMinHp, lastUnstickAt)) {
       lastUnstickAt = now;
+      filterGate = false;
       log(`em combate ha ${Math.round((now - combatSince) / 1000)} s sem matar e sem tomar dano${await targetInfo(q, s?.pos)}: largando o alvo e religando a caca`);
       await q("SKIL", CLEAR_TARGET_BODY);
       await q("SKIL", RESET_BORN_BODY);
       await q("SKIL", HUNT_ON);
       prog = { ...prog, lastGainAt: Date.now() };
+      filterGate = huntingNow();
     }
     if (pauseRequested === null && shouldSeek(s, prog, now, lastSeekAt, lastCombatAt) && s?.pos && s.scene !== undefined) {
       lastSeekAt = now;
       const t = pickSeekTarget(s.pos, await readEnemyPositions(q), spot);
       if (t) {
+        filterGate = false;
         log(`parado sem monstro por perto: indo ate o mais perto (${Math.round(Math.hypot(t[0] - s.pos[0], t[2] - s.pos[2]))} m)`);
         try {
           await q("SKIL", seekBody(t, s.scene));
@@ -646,11 +740,14 @@ export async function runTrain(
           await q("SKIL", HUNT_ON);
         }
         prog = { ...prog, lastGainAt: Date.now() };
+        // Caca religada: o filtro volta na hora (aqui o monstro morre em ~2 s).
+        filterGate = huntingNow();
         await sleep(POLL_MS);
         continue;
       }
     }
     const step = nextTrainStep(s, cfg, prog, now);
+    filterGate = huntingNow() && step.kind === "wait";
     if (step.kind === "done") {
       // Parou no caminho da cidade (prazo ou caminho travado): sem isso o char
       // ficaria no mundo com a caca desligada. Religa pra ele se defender.
@@ -660,6 +757,8 @@ export async function runTrain(
         log("caca religada: parou antes de chegar na cidade.");
       }
       log(`concluido: ${step.reason}.`);
+      loopDone = true;
+      await filterLoop;
       await releaseFollow();
       await restore();
       return { ok: true, deaths: prog.deaths, reason: step.reason };
@@ -726,6 +825,8 @@ export async function runTrain(
       log("caca religada: parado no meio da viagem.");
     }
   }
+  loopDone = true;
+  await filterLoop;
   await releaseFollow();
   log("parado.");
   await restore();

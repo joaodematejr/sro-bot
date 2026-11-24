@@ -11,6 +11,7 @@ import { bagLevel, bagStep, bagText, type BagWatch } from "../controller/bag";
 import { dueDailies, gameDay } from "../controller/daily";
 import { luckyMoneyWindow } from "../controller/freebies";
 import { QIGONG_REQUEST_EVERY_MS } from "../controller/qigong";
+import { CATEGORY_LABEL, type IgnoredSpecies, type MonsterCategory, type MonsterFilterConfig, nearbySpecies } from "../controller/monsterfilter";
 import { EXP_KEEP_MS, expDropText, type ExpPoint as RatePoint, type ExpWatch, expWatchStep } from "../controller/expwatch";
 import { alertFromLog, type TelegramAlert } from "../controller/telegram";
 import { uniqueStep, uniqueText } from "../controller/unique";
@@ -1504,11 +1505,91 @@ interface TrainUiConfig {
   sellJunk?: boolean;
   avoidPlayers?: boolean;
   reviveScroll?: boolean;
+  monsterFilter?: MonsterFilterConfig;
 }
 
 // Pontos e cidade nao tem campo proprio: ficam aqui e no localStorage.
 let trainSpots: TrainSpotUi[] = [];
 let trainHome: TrainSpotUi | undefined;
+// Especies ignoradas pelo filtro de monstros (escolhidas em "Ver monstros por perto").
+let filterSpecies: IgnoredSpecies[] = [];
+const FILTER_CATEGORIES: [MonsterCategory, string][] = [["monster", "tr-flt-monster"], ["elite", "tr-flt-elite"], ["boss", "tr-flt-boss"]];
+
+function readMonsterFilterUi(): MonsterFilterConfig | undefined {
+  const categories = FILTER_CATEGORIES.filter(([, id]) => checked(id)).map(([c]) => c);
+  if (!categories.length && !filterSpecies.length) return undefined;
+  return { categories, species: [...filterSpecies] };
+}
+
+function showFilterSpecies(): void {
+  const box = $("tr-flt-species");
+  box.textContent = "";
+  if (!filterSpecies.length) {
+    const none = document.createElement("div");
+    none.className = "text-xs text-gray-400";
+    none.textContent = "nenhuma";
+    box.append(none);
+  }
+  filterSpecies.forEach((sp, i) => {
+    const row = document.createElement("div");
+    row.className = "flex items-center gap-2 text-xs text-gray-300";
+    const label = document.createElement("span");
+    label.className = "flex-1";
+    label.textContent = `${sp.name || "sem nome"} (especie ${sp.id})`;
+    const del = document.createElement("button");
+    del.className = "btn";
+    del.textContent = "remover";
+    del.addEventListener("click", () => {
+      filterSpecies.splice(i, 1);
+      saveTrainConfig();
+      showFilterSpecies();
+    });
+    row.append(label, del);
+    box.append(row);
+  });
+}
+
+// Le os monstros em volta (ENTS) e lista as especies com um botao pra ignorar.
+async function showNearbySpecies(): Promise<void> {
+  const msg = $("tr-flt-near-msg");
+  const box = $("tr-flt-near");
+  box.textContent = "";
+  msg.textContent = "lendo...";
+  const v = await window.sro.ents().catch(() => null);
+  if (!v) {
+    msg.textContent = "sem leitura (jogo aberto, engine injetado e char em mundo?)";
+    return;
+  }
+  const list = nearbySpecies(v.ents);
+  if (!list.length) {
+    const monsters = v.ents.some((e) => e.kind === "monster" || e.kind === "elite" || e.kind === "boss");
+    msg.textContent = monsters ? "o engine instalado nao manda a especie: reinjete o engine" : "nenhum monstro por perto";
+    return;
+  }
+  msg.textContent = `${list.length} especie(s) a ate 120 m`;
+  for (const sp of list) {
+    const row = document.createElement("div");
+    row.className = "flex items-center gap-2 text-xs text-gray-300";
+    const label = document.createElement("span");
+    label.className = "flex-1";
+    label.textContent = `${sp.name || "sem nome"} Lv.${sp.level}, HP ${sp.maxHp} (${CATEGORY_LABEL[sp.kind]}, ${sp.count} por perto)`;
+    const add = document.createElement("button");
+    add.className = "btn";
+    const already = filterSpecies.some((f) => f.id === sp.id);
+    add.textContent = already ? "ignorada" : "ignorar";
+    add.disabled = already;
+    add.addEventListener("click", () => {
+      if (filterSpecies.some((f) => f.id === sp.id)) return;
+      filterSpecies.push({ id: sp.id, name: `${sp.name} (HP ${sp.maxHp})` });
+      saveTrainConfig();
+      showFilterSpecies();
+      add.textContent = "ignorada";
+      add.disabled = true;
+    });
+    row.append(label, add);
+    box.append(row);
+  }
+}
 
 function intOf(id: string, d: number): number {
   const v = parseInt(($(id) as HTMLInputElement).value, 10);
@@ -1564,6 +1645,7 @@ function readTrainUi(): TrainUiConfig {
     sellJunk: checked("tr-sell"),
     avoidPlayers: checked("tr-players"),
     reviveScroll: checked("tr-revive-scroll"),
+    monsterFilter: readMonsterFilterUi(),
   };
 }
 
@@ -1669,6 +1751,9 @@ function applyTrainUi(c: TrainUiConfig): void {
   ($("tr-sell") as HTMLInputElement).checked = !!c.sellJunk;
   ($("tr-players") as HTMLInputElement).checked = c.avoidPlayers !== false;
   ($("tr-revive-scroll") as HTMLInputElement).checked = !!c.reviveScroll;
+  for (const [cat, id] of FILTER_CATEGORIES) ($(id) as HTMLInputElement).checked = !!c.monsterFilter?.categories?.includes(cat);
+  filterSpecies = [...(c.monsterFilter?.species ?? [])];
+  showFilterSpecies();
   showTrainSpots();
 }
 
@@ -3211,8 +3296,10 @@ function wire(): void {
   applyTrainUi(loadTrainConfig());
   for (const id of ["tr-deaths", "tr-potions", "tr-sw-few", "tr-sw-min", "tr-sw-radius", "tr-sw-deaths-on", "tr-sw-deaths",
     "tr-stop-level-on", "tr-stop-level", "tr-stop-exp", "tr-stop-gold-on", "tr-stop-gold", "tr-home-on", "tr-team-on", "tr-team-same", "tr-team-lead", "tr-team-auto", "tr-team-req", "tr-team-invite", "tr-team-accept",
-    "tr-team-accept-fg", "tr-team-follow", "tr-team-buff", "tr-sw-hp-on", "tr-sw-hp", "tr-booster", "tr-buff-dano", "tr-buff-vip", "tr-berserk", "tr-devil", "tr-skills", "tr-sell", "tr-players", "tr-revive-scroll"])
+    "tr-team-accept-fg", "tr-team-follow", "tr-team-buff", "tr-sw-hp-on", "tr-sw-hp", "tr-booster", "tr-buff-dano", "tr-buff-vip", "tr-berserk", "tr-devil", "tr-skills", "tr-sell", "tr-players", "tr-revive-scroll",
+    "tr-flt-monster", "tr-flt-elite", "tr-flt-boss"])
     $(id).addEventListener("change", saveTrainConfig);
+  $("btn-tr-flt-near").addEventListener("click", () => void showNearbySpecies());
   // Entrar num time aberto e criar um time sao um ou outro.
   $("tr-team-on").addEventListener("change", () => {
     if (checked("tr-team-on")) ($("tr-team-lead") as HTMLInputElement).checked = false;
@@ -3407,7 +3494,7 @@ type MapKind = "boss" | "elite" | "monster" | "party" | "player" | "pet" | "npc"
 interface MapView {
   me: { x: number; z: number; id: number };
   target: number;
-  ents: { kind: MapKind; id: number; x: number; z: number; level: number; dead: boolean; hp: number; maxHp: number; name: string }[];
+  ents: { kind: MapKind; id: number; x: number; z: number; level: number; dead: boolean; hp: number; maxHp: number; name: string; typeId?: number }[];
   drops: { x: number; z: number; item: number; count: number }[];
   path?: { x: number; z: number }[];
   source: "ents" | "getp";
