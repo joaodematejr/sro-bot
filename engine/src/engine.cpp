@@ -2201,8 +2201,8 @@ std::string il2cpp_string_json(void* s, int maxLen) {
 
 // ENTS [raio]: num JSON so o que o mapa do app precisa, em vez de ~5 GETP por
 // entidade. me = jogador (x, z, id e o alvo do auto-play: _ai._target); ents =
-// [tipo, id, x, z, nivel, morto, hp, maxHp, "nome"] das entidades a ate `raio` m
-// (padrao 120, no maximo 150); drops = [x, z, item, qtd] dos itens no chao
+// [tipo, id, x, z, nivel, morto, hp, maxHp, "nome", especie] das entidades a ate `raio` m
+// (padrao 120, no maximo 150; especie = XAttributes._type_id, 0 sem atributos); drops = [x, z, item, qtd] dos itens no chao
 // (XLevelDoodadMgr._doodads com dropped e sem picked). Ids sao os 32 bits de baixo
 // (como o GETP). Le na thread do socket, sob g_read_mu: so campos e getters C#
 // do jogo (nada da Unity).
@@ -2264,10 +2264,22 @@ std::string read_entities_json(float radius) {
         int type = 0;
         if (type_off) safe_read(&type, (char*)e + type_off, 4);
         int level = 0, hp = 0, maxHp = 0;
+        uint32_t typeId = 0;
         void* attr = nullptr;
         if (safe_read(&attr, (char*)e + attr_off(e), sizeof(attr)) && plausible_obj(attr)) {
             level = boxed_i32(invoke0(attr, "get_Level"));
             void* acls = safe_class_of(attr);
+            // Especie (XAttributes._type_id, Niya Mage 310011): chave do filtro de
+            // monstros. A classe muda (XOthersAttributes, XPlayerAttributes...):
+            // offset guardado por classe, a ultima vista.
+            static void* tid_cls = nullptr;
+            static size_t tid_off = 0;
+            if (acls && acls != tid_cls) {
+                void* tf = find_field_in_chain(acls, "_type_id");
+                tid_off = tf ? g_api.field_get_offset(tf) : 0;
+                tid_cls = acls;
+            }
+            if (tid_off) safe_read(&typeId, (char*)attr + tid_off, 4);
             const void* gm = acls ? g_api.class_get_method_from_name(acls, "GetAttr", 1) : nullptr;
             if (gm) {
                 auto ga = [&](int a) -> int {
@@ -2288,7 +2300,8 @@ std::string read_entities_json(float radius) {
                       dead ? 1 : 0, hp, maxHp);
         j += buf;
         j += name;
-        j += "\"]";
+        std::snprintf(buf, sizeof(buf), "\",%u]", typeId);
+        j += buf;
         n++;
     }
     j += "],\"drops\":[";
@@ -2373,6 +2386,77 @@ std::string read_entities_json(float radius) {
     }
     j += "]}";
     return j;
+}
+
+// TARG <id>: troca o alvo do auto-play (XAIComponent.SetTarget) pro monstro de id
+// (os 32 bits de baixo, como no ENTS), sem desligar a caca: provado ao vivo, a IA
+// anda ate ele, mata e volta a escolher sozinha. Acha a entidade aqui, na hora,
+// pelo id (o indice do GetAll muda com spawn/morte) e so aceita monstro vivo:
+// bit Enemy sem Role/Player (jogador) e sem Spirit/Scavenger (pet). A chamada roda
+// na thread principal (method 13, como o callx). Tag propria e nao subcomando do
+// SKIL: num engine antigo o SKIL desconhecido liga/desliga a caca pelos digitos;
+// a tag desconhecida so devolve o estado do jogador (sem "targ" na resposta).
+std::string set_ai_target(uint32_t id) {
+    if (!id) return "{\"ok\":false,\"erro\":\"sem id\"}";
+    void* mgrc = find_class_by_name("XEntityMgr");
+    void* mgr = mgrc ? resolve_singleton(mgrc) : nullptr;
+    if (!plausible_obj(mgr)) return "{\"ok\":false,\"erro\":\"XEntityMgr nulo\"}";
+    FaultGuard guard;
+    void* player = nullptr;
+    if (!safe_read(&player, (char*)mgr + player_off(mgr), sizeof(player)) || !plausible_obj(player))
+        return "{\"ok\":false,\"erro\":\"jogador nulo\"}";
+    void* ai = nullptr;
+    if (!safe_read(&ai, (char*)player + ai_off(player), sizeof(ai)) || !plausible_obj(ai))
+        return "{\"ok\":false,\"erro\":\"_ai nulo\"}";
+    const void* mi = g_api.class_get_method_from_name(safe_class_of(ai), "SetTarget", 1);
+    if (!mi) return "{\"ok\":false,\"erro\":\"SetTarget nao achado\"}";
+    auto invoke0 = [](void* obj, const char* name) -> void* {
+        void* cls = safe_class_of(obj);
+        const void* m = cls ? g_api.class_get_method_from_name(cls, name, 0) : nullptr;
+        if (!m) return nullptr;
+        void* exc = nullptr;
+        void* r = g_api.runtime_invoke(m, obj, nullptr, &exc);
+        return exc ? nullptr : r;
+    };
+    void* list = invoke0(mgr, "GetAll");
+    int size = 0;
+    void* items = nullptr;
+    if (plausible_obj(list)) {
+        safe_read(&items, (char*)list + 0x10, sizeof(items));
+        safe_read(&size, (char*)list + 0x18, 4);
+    }
+    void* found = nullptr;
+    for (int i = 0; plausible_obj(items) && i < size && i < 400; i++) {
+        void* e = nullptr;
+        if (!safe_read(&e, (char*)items + 0x20 + (size_t)i * 8, sizeof(e)) || !plausible_obj(e) || e == player) continue;
+        void* r = invoke0(e, "get_ID");
+        uint64_t eid = 0;
+        if (r) safe_read(&eid, (char*)r + 0x10, 8);
+        if ((uint32_t)eid == id) { found = e; break; }
+    }
+    if (!found) return "{\"ok\":false,\"erro\":\"entidade nao achada\"}";
+    void* tf = find_field_in_chain(safe_class_of(found), "_eEntity_Type");
+    int type = 0;
+    if (tf) safe_read(&type, (char*)found + g_api.field_get_offset(tf), 4);
+    const int ENEMY = 0x8, ROLE = 0x2, PLAYER = 0x4, SPIRIT = 0x10000, SCAVENGER = 0x20000;
+    if (!(type & ENEMY) || (type & (ROLE | PLAYER | SPIRIT | SCAVENGER)))
+        return "{\"ok\":false,\"erro\":\"nao e monstro\"}";
+    void* dr = invoke0(found, "get_IsDead");
+    uint8_t dead = 0;
+    if (dr) safe_read(&dead, (char*)dr + 0x10, 1);
+    if (dead) return "{\"ok\":false,\"erro\":\"monstro morto\"}";
+    {
+        std::lock_guard<std::mutex> lk(g_queue_mu);
+        Action act{};
+        act.type = 2; act.method = 13; act.argc = 1; act.obj = ai; act.mi = mi;
+        act.xkind[0] = 'o';
+        act.xobj[0] = found;
+        std::strncpy(act.name, "SetTarget", sizeof(act.name) - 1);
+        std::strncpy(act.cls, "XAIComponent", sizeof(act.cls) - 1);
+        g_queue.push_back(act);
+        g_has_actions = true;
+    }
+    return std::string("{\"ok\":true,\"targ\":") + std::to_string(id) + "}";
 }
 
 // Processa um comando (tag + corpo) e devolve o JSON da resposta. CONN e
@@ -2546,6 +2630,10 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
             first = false;
         }
         return out + "}}";
+    }
+    if (tag == "TARG" && g_ready) {
+        std::lock_guard<std::mutex> lk(g_read_mu);
+        return set_ai_target((uint32_t)std::strtoul(body.c_str(), nullptr, 10));
     }
     if (tag == "ENTS" && g_ready) {
         std::lock_guard<std::mutex> lk(g_read_mu);
