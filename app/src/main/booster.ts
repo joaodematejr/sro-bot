@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { boosterDue, boosterUntil, BUFF_GROUPS, type BuffKey, pickBuff, untilOf, useItemBody } from "../controller/booster";
+import { boosterUntil, buffDue, BUFF_GROUPS, type BuffKey, pickBuff, untilOf, useItemBody } from "../controller/booster";
 
 type Query = (tag: string, body: string) => Promise<Record<string, unknown>>;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -50,10 +50,25 @@ async function findIndex(q: Query, id: number): Promise<number | undefined> {
   return undefined;
 }
 
+// Buff no char? (lista do servidor; undefined se a leitura falhar)
+const BUFFS = "XEntityMgr get_Player _buff _ServerBuffList";
+async function hasBuff(q: Query, id: number): Promise<boolean | undefined> {
+  const n = num(await q("GETP", `${BUFFS} get_Count`));
+  if (n === undefined) return undefined;
+  for (let i = 0; i < n; i++) {
+    const b = num(await q("GETP", `${BUFFS} get_Item:${i} buffID`));
+    if (b === undefined) return undefined;
+    if (b === id) return true;
+  }
+  return false;
+}
+
 // Usa um item de cada grupo ligado que nao tenha buff valendo (com o app sabendo).
 export async function maybeUseBuffs(q: Query, on: Partial<Record<BuffKey, boolean>>, log: (m: string) => void): Promise<void> {
   for (const g of BUFF_GROUPS) {
-    if (!on[g.key] || !boosterDue(untilOf(load(), g.key), Date.now())) continue;
+    if (!on[g.key]) continue;
+    const active = g.buffId !== undefined ? await hasBuff(q, g.buffId).catch(() => undefined) : undefined;
+    if (!buffDue(active, untilOf(load(), g.key), Date.now())) continue;
     const counts: Record<number, number | undefined> = {};
     for (const it of g.items) counts[it.id] = await stock(q, it.id);
     const b = pickBuff(g.items, counts);

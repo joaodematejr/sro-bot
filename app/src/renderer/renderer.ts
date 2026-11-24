@@ -1417,6 +1417,7 @@ interface TrainUiConfig {
   booster?: boolean;
   buffDamage?: boolean;
   buffVip?: boolean;
+  lure?: boolean;
   berserk?: boolean;
   devil?: boolean;
   autoSkills?: boolean;
@@ -1470,6 +1471,7 @@ function readTrainUi(): TrainUiConfig {
     booster: checked("tr-booster"),
     buffDamage: checked("tr-buff-dano"),
     buffVip: checked("tr-buff-vip"),
+    lure: checked("tr-buff-lure"),
     berserk: checked("tr-berserk"),
     devil: checked("tr-devil"),
     autoSkills: checked("tr-skills"),
@@ -1573,6 +1575,7 @@ function applyTrainUi(c: TrainUiConfig): void {
   ($("tr-booster") as HTMLInputElement).checked = !!c.booster;
   ($("tr-buff-dano") as HTMLInputElement).checked = !!c.buffDamage;
   ($("tr-buff-vip") as HTMLInputElement).checked = !!c.buffVip;
+  ($("tr-buff-lure") as HTMLInputElement).checked = !!c.lure;
   ($("tr-berserk") as HTMLInputElement).checked = c.berserk !== false;
   ($("tr-devil") as HTMLInputElement).checked = c.devil !== false;
   ($("tr-skills") as HTMLInputElement).checked = !!c.autoSkills;
