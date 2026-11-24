@@ -408,6 +408,7 @@ export async function runTrain(
   let levelingOpenAt = 0;
   let lastLevelingPhase = "";
   let lastSeekAt = 0;
+  let lastCombatAt = -Infinity;
   // Skills e maestrias: confere na partida e a cada nivel novo (so faz algo se o
   // nivel do char passou das maestrias usadas).
   let skillsCheckedLevel = -1;
@@ -583,7 +584,8 @@ export async function runTrain(
     }
     // Parado sem alvo: anda ate o monstro mais perto e religa a caca (andar
     // desliga o auto-play; a caca volta sempre, mesmo se algo falhar).
-    if (pauseRequested === null && shouldSeek(s, prog, now, lastSeekAt) && s?.pos && s.scene !== undefined) {
+    if (s?.inCombat) lastCombatAt = now;
+    if (pauseRequested === null && shouldSeek(s, prog, now, lastSeekAt, lastCombatAt) && s?.pos && s.scene !== undefined) {
       lastSeekAt = now;
       const t = pickSeekTarget(s.pos, await readEnemyPositions(q), spot);
       if (t) {

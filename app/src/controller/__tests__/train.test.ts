@@ -375,10 +375,15 @@ test("parado sem monstro: procura o mais perto dentro do ponto, so com tudo limp
   assert.equal(shouldSeek(s, { ...p, pauseReason: "pausa pro Continental" }, SEEK_IDLE_MS, -Infinity), false);
   assert.equal(shouldSeek(s, { ...p, goingToSpot: true }, SEEK_IDLE_MS, -Infinity), false);
   assert.equal(shouldSeek(s, p, SEEK_IDLE_MS, SEEK_IDLE_MS - 1000), false); // acabou de procurar
+  // Saiu do combate agora (EXP ainda nao subiu): conta do combate.
+  assert.equal(shouldSeek(s, p, SEEK_IDLE_MS + 1000, -Infinity, 2000), false);
+  assert.equal(shouldSeek(s, p, SEEK_IDLE_MS + 2000, -Infinity, 2000), true);
   const pos: [number, number, number] = [1325, 0, 620];
-  // Mais perto entre 25 e 70 m.
+  // Mais perto fora dos 15 m.
   assert.deepEqual(pickSeekTarget(pos, [[1325, 0, 680], [1355, 0, 620], [1500, 0, 620]], A), [1355, 0, 620]);
-  // Monstro a menos de 25 m: o auto-play cuida, nao desliga nada.
+  // 2026-11-24: monstro a 22 m que o auto-play nao pegava; agora vai ate ele.
+  assert.deepEqual(pickSeekTarget(pos, [[1347, 0, 620]], A), [1347, 0, 620]);
+  // Monstro a menos de 15 m: o auto-play cuida, nao desliga nada.
   assert.equal(pickSeekTarget(pos, [[1335, 0, 620], [1355, 0, 620]], A), null);
   // Longe do char mas dentro do raio do ponto (100 m): vai buscar.
   assert.deepEqual(pickSeekTarget(pos, [[1325, 0, 700]], A), [1325, 0, 700]);
