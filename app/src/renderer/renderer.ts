@@ -119,6 +119,8 @@ declare global {
       trainSpot: () => Promise<{ ok: boolean; erro?: string; spot?: TrainSpotUi }>;
       runFirm: (cfg: FirmUiConfig) => Promise<{ ok: boolean; erro?: string; submitted?: number }>;
       stopFirm: () => Promise<void>;
+      runMainQuest: (cfg: MainQuestUiConfig) => Promise<{ ok: boolean; erro?: string; completed?: number }>;
+      stopMainQuest: () => Promise<void>;
       runGuild: (cfg: GuildUiConfig) => Promise<{ ok: boolean; erro?: string; done?: number }>;
       stopGuild: () => Promise<void>;
       runGuildBoss: (cfg: GuildBossUiConfig) => Promise<{ ok: boolean; erro?: string }>;
@@ -382,7 +384,7 @@ let aiBusy = false;
 
 function aiAppInfo(): AiAppInfo {
   const t = readTrainUi();
-  const acts = ["act-train", "act-cont", "act-firm", "act-tower", "act-guild", "act-actchest", "act-freebies", "act-qigong"].filter((id) => isChecked(id));
+  const acts = ["act-train", "act-cont", "act-firm", "act-mainquest", "act-tower", "act-guild", "act-actchest", "act-freebies", "act-qigong"].filter((id) => isChecked(id));
   return {
     train: {
       running: trainRunning,
@@ -708,6 +710,81 @@ async function runFirmActivityInner(): Promise<boolean> {
     log("firm falhou: " + (r.erro ?? "erro"));
   }
   return r.ok;
+}
+
+// ---- Missao principal ----
+
+interface MainQuestUiConfig {
+  allowTeleport: boolean;
+  hunt: boolean;
+  maxQuests: number;
+}
+
+const MAIN_QUEST_DEFAULT: MainQuestUiConfig = { allowTeleport: true, hunt: true, maxQuests: 0 };
+
+function readMainQuestUi(): MainQuestUiConfig {
+  const max = parseInt(($("mq-max") as HTMLInputElement).value, 10);
+  return {
+    allowTeleport: ($("mq-teleport") as HTMLInputElement).checked,
+    hunt: ($("mq-hunt") as HTMLInputElement).checked,
+    maxQuests: Number.isFinite(max) && max >= 0 ? max : MAIN_QUEST_DEFAULT.maxQuests,
+  };
+}
+
+function applyMainQuestUi(c: MainQuestUiConfig): void {
+  ($("mq-teleport") as HTMLInputElement).checked = c.allowTeleport;
+  ($("mq-hunt") as HTMLInputElement).checked = c.hunt;
+  ($("mq-max") as HTMLInputElement).value = String(c.maxQuests);
+}
+
+function loadMainQuestConfig(): MainQuestUiConfig {
+  try {
+    const raw = localStorage.getItem("mainQuestConfig");
+    if (raw) return { ...MAIN_QUEST_DEFAULT, ...JSON.parse(raw) };
+  } catch {
+    /* localStorage pode falhar; usa o default */
+  }
+  return { ...MAIN_QUEST_DEFAULT };
+}
+
+function saveMainQuestConfig(): void {
+  try {
+    localStorage.setItem("mainQuestConfig", JSON.stringify(readMainQuestUi()));
+  } catch {
+    /* ignora */
+  }
+}
+
+function setMainQuestStatus(text: string, cls: string): void {
+  const el = $("mq-status");
+  el.textContent = text;
+  el.className = "pill " + cls;
+}
+
+// Uma passada so por vez (Iniciar bot e o toggle podem cair juntos).
+let mqBusy = false;
+
+// Segue a linha principal ate acabar, pedir nivel, falhar ou dar 1 h.
+async function runMainQuestActivityInner(): Promise<boolean> {
+  if (mqBusy) return false;
+  mqBusy = true;
+  try {
+    log("atividade Missao principal ativa: rodando...");
+    setMainQuestStatus("rodando", "bg-ink-600 text-warn");
+    const r = await window.sro.runMainQuest(readMainQuestUi());
+    if (r.ok) {
+      setMainQuestStatus("concluido", "bg-ink-600 text-ok");
+      log(`Missao principal concluida (${r.completed ?? 0} entregue(s) nesta passada).`);
+    } else if (r.erro === "parado") {
+      setMainQuestStatus("parado", "bg-ink-600 text-muted");
+    } else {
+      setMainQuestStatus("falhou", "bg-ink-600 text-danger");
+      log("missao principal falhou: " + (r.erro ?? "erro"));
+    }
+    return r.ok;
+  } finally {
+    mqBusy = false;
+  }
 }
 
 // ---- Config do Guild utilities ----
@@ -1111,7 +1188,7 @@ async function checkTimedEvents(): Promise<void> {
   eventOpen = open;
   if (!open || !(activitiesRunning || contBusy)) return;
   if (was !== open) log(`${open} aberto: parando a atividade em andamento pra entrar.`);
-  const stops = [window.sro.stopContinental, window.sro.stopCardAlbum, window.sro.stopFirm, window.sro.stopTower, window.sro.stopGuild];
+  const stops = [window.sro.stopContinental, window.sro.stopCardAlbum, window.sro.stopFirm, window.sro.stopMainQuest, window.sro.stopTower, window.sro.stopGuild];
   await Promise.all(stops.map((f) => f().catch(() => undefined)));
 }
 
@@ -1352,7 +1429,8 @@ let qigongNextAt = 0;
 // pedidos sairam junto com ela).
 // Com o Guild Boss rodando o Qigong nao entra: ele leva o char pro Guild Hall, e de
 // la o jogo nao deixa entrar na arena.
-const qigongBlocked = () => dailyBusy || contBusy || gbBusy || swBusy;
+// A missao principal tambem leva o char pelo mapa: mesmo bloqueio.
+const qigongBlocked = () => dailyBusy || contBusy || gbBusy || swBusy || mqBusy;
 
 // Aceitar: o convite se recusa sozinho em 15 s, entao confere a cada 4 s. Na mesma
 // batida, a rede de seguranca do Guild Hall (char parado la depois de um Qigong).
@@ -2223,7 +2301,7 @@ async function runEnabledActivities(): Promise<void> {
   // Evita rodar em dobro (watchdog + Iniciar bot). Com o Treino ja rodando, as
   // diarias pendentes ficam pro maybeRunDailies, que pausa o loop antes.
   if (activitiesRunning || trainRunning) return;
-  if (!isChecked("act-tower") && !isChecked("act-cont") && !isChecked("act-guild") && !isChecked("act-firm") && !isChecked("act-cards") && !isChecked("act-train")) return;
+  if (!isChecked("act-tower") && !isChecked("act-cont") && !isChecked("act-guild") && !isChecked("act-firm") && !isChecked("act-mainquest") && !isChecked("act-cards") && !isChecked("act-train")) return;
   activitiesRunning = true;
   try {
     log("aguardando o char entrar em mundo...");
@@ -2242,6 +2320,9 @@ async function runEnabledActivities(): Promise<void> {
     if (!polling) return;
     await runOncePerDay("act-firm", "Firm", runFirmActivity);
     if (!polling) return;
+    // Nao e diaria: roda a cada Iniciar bot (a proxima missao destrava com o nivel).
+    if (isChecked("act-mainquest")) await runMainQuestActivity();
+    if (!polling) return;
     if (isChecked("act-cards")) {
       cardAlbumNextAt = 0;
       await maybeRunCardAlbum();
@@ -2258,6 +2339,7 @@ async function stopActivities(): Promise<void> {
   await window.sro.stopTower();
   await window.sro.stopContinental();
   await window.sro.stopFirm();
+  await window.sro.stopMainQuest();
   await window.sro.stopGuild();
   await window.sro.stopGuildBoss();
   await window.sro.stopCardAlbum();
@@ -2275,6 +2357,7 @@ async function onActivityToggle(id: string): Promise<void> {
     if (id === "act-sekhmet") await window.sro.stopSekhmet();
     if (id === "act-tower") await window.sro.stopTower();
     if (id === "act-cont") await window.sro.stopContinental();
+    if (id === "act-mainquest") await window.sro.stopMainQuest();
   }
   if (id === "act-train") {
     if (!on) {
@@ -2315,6 +2398,33 @@ async function onActivityToggle(id: string): Promise<void> {
   } else if (id === "act-firm" && on) {
     if (await waitInWorld()) {
       if (polling && (await runFirmActivity())) markDone("act-firm");
+    }
+  } else if (id === "act-mainquest" && on) {
+    // Pausa o loop do Treino, segue a missao e religa. Marca activitiesRunning e
+    // contBusy como as diarias: assim Guild Boss, Sekhmet, diarias e Continental nao
+    // entram junto (disputariam a caca e o char) e o checkTimedEvents para a missao
+    // quando um evento abre. Com outra atividade ja rodando (Iniciar bot no meio do
+    // Firm, por exemplo), nao roda junto. Treino que nao para a tempo: nao roda (como
+    // nas diarias), senao os dois disputariam a caca.
+    if (!(await waitInWorld())) return;
+    if (activitiesRunning || contBusy || gbBusy || swBusy) {
+      log("Missao principal: outra atividade rodando agora, entao nao entra junto; ela roda na fila do Iniciar bot ou ao marcar \"Ativa\" de novo depois.");
+      return;
+    }
+    activitiesRunning = true;
+    contBusy = true;
+    try {
+      if (trainRunning && !(await stopTrainLoop())) {
+        log("Missao principal: o Treino nao parou a tempo; a missao fica pra depois. Marque \"Ativa\" de novo daqui a pouco.");
+        return;
+      }
+      if (polling) await runMainQuestActivity();
+    } finally {
+      activitiesRunning = false;
+      contBusy = false;
+      // Religa tambem quando a espera estourou: o stopTrain ja foi mandado e o loop
+      // sai sozinho depois (como nas diarias); o resumeTrainLater espera ele sair.
+      if (polling && isChecked("act-train")) resumeTrainLater("da missao principal");
     }
   } else if (id === "act-actchest" && on) {
     actChestNextAt = 0;
@@ -2510,6 +2620,7 @@ async function measureExp(label: string, fn: () => Promise<boolean>): Promise<bo
 }
 
 const runFirmActivity = (): Promise<boolean> => measureExp("Firm", runFirmActivityInner);
+const runMainQuestActivity = (): Promise<boolean> => measureExp("Missao principal", runMainQuestActivityInner);
 const runGuildActivity = (): Promise<boolean> => measureExp("Guild utilities", runGuildActivityInner);
 const runGuildBossActivity = (): Promise<boolean> => measureExp("Guild Boss", runGuildBossActivityInner);
 const runSekhmetActivity = (): Promise<boolean> => measureExp("Sekhmet War", runSekhmetActivityInner);
@@ -3145,6 +3256,7 @@ function wire(): void {
   wireActivityFlag("act-tower", "act-tower");
   wireActivityFlag("act-cont", "act-cont");
   wireActivityFlag("act-firm", "act-firm");
+  wireActivityFlag("act-mainquest", "act-mainquest");
   wireActivityFlag("act-guild", "act-guild");
   wireActivityFlag("act-guildboss", "act-guildboss");
   wireActivityFlag("act-sekhmet", "act-sekhmet");
@@ -3218,6 +3330,11 @@ function wire(): void {
   $("btn-fm-save").addEventListener("click", () => {
     saveFirmConfig();
     log("config do Firm salva.");
+  });
+  applyMainQuestUi(loadMainQuestConfig());
+  $("btn-mq-save").addEventListener("click", () => {
+    saveMainQuestConfig();
+    log("config da Missao principal salva.");
   });
   applyGuildUi(loadGuildConfig());
   $("btn-gu-save").addEventListener("click", () => {

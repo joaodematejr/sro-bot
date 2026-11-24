@@ -24,6 +24,8 @@ reconhecimento de imagem.
 - **Diárias**: Demon Locking Tower, Continental Exploration, Firm (tarefa diária
   da guilda, com entrega e prêmio total), Guild utilities (sign-in, baús e
   salário), baús de atividade diária, Qigong entre membros da guilda.
+- **Missão principal**: aceita, segue o objetivo (caça ou NPC) e entrega a main
+  quest, uma atrás da outra, a cada Iniciar bot.
 - **Grátis do dia**: pacotes de preço zero do Event, attendance do Welfare,
   caixinha do Daily Pack, baús do sign-in da guilda, red envelopes da guilda e,
   opcional, doação no Support da guilda. Nada pago, nunca.

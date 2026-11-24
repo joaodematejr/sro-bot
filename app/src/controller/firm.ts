@@ -32,10 +32,15 @@
 import type { EngineQuery } from "./tower";
 import { hpPercent, readEnemiesAround, safeToStopHunt } from "./train";
 import { roleId } from "./chat";
+import {
+  afterTeleport, DEFEND_HP_PCT, doTaskBody, findTaskStatus, GOTO_MAX_MS, mustDefend, newTravel, operateTaskBody,
+  readNavigating, stopHuntBlock, TASK_CAN_TAKE, TASK_OP_TAKE, TASK_TAKEN, type TravelLabels, type TravelProgress,
+  trackTravel, trackUnsafe, travelStep, UNSAFE_MAX_MS,
+} from "./quest";
 
 export const FIRM_QUEST_ID = 2222;
-export const QUEST_CAN_TAKE = 1;
-export const QUEST_TAKEN = 2;
+export const QUEST_CAN_TAKE = TASK_CAN_TAKE;
+export const QUEST_TAKEN = TASK_TAKEN;
 export const FIRM_SCENE = 100001; // Jangan, onde fica o Leebaek
 export const ASK_HELP_PER_DAY = 3;
 // Entregas minimas pro premio total (XGlobalConfig DailyTaskMinTotalTaskCount, lido 3).
@@ -111,14 +116,9 @@ export function canSubmit(t: FirmTask, cfg: FirmConfig): boolean {
     && (t.quality <= cfg.maxQuality || cfg.allowItems.includes(t.itemId));
 }
 
-export interface FirmProgress {
+// Viagem (gotoSentAt, teleports, arrivedAt em Jangan, movedAt) vem do quest.ts.
+export interface FirmProgress extends TravelProgress {
   huntStopped: boolean;
-  gotoSentAt: number;
-  teleports: number; // confirmacoes de viagem mandadas
-  teleportAt: number;
-  arrivedAt: number; // primeira leitura em Jangan depois do "ir" (0 = ainda nao)
-  lastPos?: number[];
-  movedAt: number; // ultima leitura em que o char andou (0 = nunca)
   unsafeSince: number; // desde quando esta em combate esperando pra parar a caca (0 = nao)
   defended: boolean; // religou a caca no caminho (atacado com HP baixo)
   takeSent: boolean;
@@ -129,7 +129,7 @@ export interface FirmProgress {
 }
 
 export function newFirmProgress(): FirmProgress {
-  return { huntStopped: false, gotoSentAt: 0, teleports: 0, teleportAt: 0, arrivedAt: 0, movedAt: 0, unsafeSince: 0, defended: false, takeSent: false, submitted: [], asked: [], totalSent: false, spins: 0 };
+  return { ...newTravel(), huntStopped: false, unsafeSince: 0, defended: false, takeSent: false, submitted: [], asked: [], totalSent: false, spins: 0 };
 }
 
 // Conclui o dia (Submit) so com o servidor dizendo que o premio total nao foi pego.
@@ -142,30 +142,12 @@ const totalNote = (s: FirmSnapshot, p: FirmProgress) =>
   s.totalRewarded ? ", premio total pego" : p.totalSent ? ", o servidor nao deu o premio total" : "";
 
 const GOTO_COOLDOWN_MS = 60000;
-// Depois de chegar em Jangan o char ainda anda ate o Leebaek (o IsNavigating da
-// missao ficou falso nesse trecho ao vivo): espera antes de aceitar.
-const ARRIVE_SETTLE_MS = 10000;
-// O DoTask fora de Jangan abre o mapa com a viagem e nao anda: confirma depois disso.
-const TELEPORT_AFTER_MS = 6000;
-const TELEPORT_COOLDOWN_MS = 15000;
-const MAX_TELEPORTS = 2;
-// A viagem pra outro mapa nao e direta: longe da borda, o jogo anda ate ela
-// (TeleportDocument.HandleTeleportWithGate) e o IsNavigating da missao fica falso.
-// Em 2026-11-09 18:01 o char andou 290 m rumo a Jangan e o Firm desistiu em 38 s
-// achando que a viagem nao saiu. Andando (mais que MOVE_MIN_M desde a ultima
-// leitura, ha menos de MOVE_GRACE_MS), conta como viagem em curso.
-const MOVE_MIN_M = 2;
-const MOVE_GRACE_MS = 8000;
-// Sem chegar no Leebaek nesse tempo desde o primeiro "ir": desiste.
-export const GOTO_MAX_MS = 5 * 60 * 1000;
-// Parar a caca so fora de combate e sem monstro perto (a regra do "Parar bot",
-// safeToStopHunt). Em 2026-11-07 21:00 o Firm desligou a caca do char principal em combate pra
-// viajar, a viagem nao saiu e ele ficou ~40 s parado entre monstros. Esperando,
-// a caca segue ligada; passou disso, o Firm fica pra depois.
-export const FIRM_UNSAFE_MAX_MS = 60 * 1000;
-// Atacado no caminho com a caca desligada e HP abaixo disso: religa e desiste
-// (mesma regra da ida pra cidade do Treino).
-export const FIRM_DEFEND_HP_PCT = 60;
+// Viagem e guarda da caca no quest.ts (casos de 2026-11-07 21:00, 2026-11-08 09:49
+// e 2026-11-09 18:01 contados la).
+export { GOTO_MAX_MS };
+export const FIRM_UNSAFE_MAX_MS = UNSAFE_MAX_MS;
+export const FIRM_DEFEND_HP_PCT = DEFEND_HP_PCT;
+const FIRM_TRAVEL: TravelLabels = { dest: "o Leebaek", at: "no Leebaek", map: "Jangan", toMap: "a Jangan" };
 
 export function nextFirmStep(s: FirmSnapshot | null, cfg: FirmConfig, p: FirmProgress, now: number): FirmStep {
   if (!s) return { kind: "wait", reason: "engine fora" };
@@ -176,33 +158,21 @@ export function nextFirmStep(s: FirmSnapshot | null, cfg: FirmConfig, p: FirmPro
     return { kind: "fail", reason: "missao do Firm nao achada na lista" };
   }
   if (p.defended) return { kind: "fail", reason: `atacado com HP abaixo de ${FIRM_DEFEND_HP_PCT}% indo ao Leebaek; caca religada, Firm fica pra depois` };
-  if (p.huntStopped && s.inCombat && s.hpPct !== undefined && s.hpPct < FIRM_DEFEND_HP_PCT)
+  if (mustDefend(p.huntStopped, s.inCombat, s.hpPct))
     return act("defend", `atacado com HP abaixo de ${FIRM_DEFEND_HP_PCT}% indo ao Leebaek: religar a caca`, JSON.stringify({ on: 1 }));
   if (s.questStatus === QUEST_CAN_TAKE) {
     if (!p.huntStopped) {
-      if (s.safeToLeave === false) {
-        if (p.unsafeSince > 0 && now - p.unsafeSince >= FIRM_UNSAFE_MAX_MS)
-          return { kind: "fail", reason: "em combate ou com monstro perto ha 1 min; Firm fica pra depois (caca segue ligada)" };
-        return { kind: "wait", reason: "esperando o char ficar seguro (fora de combate, HP alto, sem monstro perto) pra parar a caca" };
-      }
+      const block = stopHuntBlock(s.safeToLeave, p.unsafeSince, now, "Firm");
+      if (block) return block;
       return act("stophunt", "parar a caca pra ir ao Leebaek", JSON.stringify({ on: 0 }));
     }
-    if (p.gotoSentAt === 0) return act("goto", "ir ate o Leebaek", `callsi XTaskDocument DoTask 2 ${FIRM_QUEST_ID} 1`);
-    if (now - p.gotoSentAt >= GOTO_MAX_MS) return { kind: "fail", reason: "nao chegou no Leebaek" };
-    if (s.navigating) return { kind: "wait", reason: "indo ate o Leebaek" };
-    if (s.scene !== FIRM_SCENE && p.movedAt > p.gotoSentAt && now - p.movedAt < MOVE_GRACE_MS)
-      return { kind: "wait", reason: "andando ate a borda do mapa pra viajar a Jangan" };
-    if (s.scene !== FIRM_SCENE) {
-      if (now - p.gotoSentAt < TELEPORT_AFTER_MS || (p.teleportAt > 0 && now - p.teleportAt < TELEPORT_COOLDOWN_MS))
-        return { kind: "wait", reason: "esperando a viagem" };
-      if (p.teleports >= MAX_TELEPORTS) return { kind: "fail", reason: "a viagem ate Jangan nao saiu" };
-      if (!cfg.allowTeleport) return { kind: "fail", reason: "precisa viajar ate Jangan e a viagem paga esta desligada" };
-      return act("teleport", "confirmar a viagem ate o Leebaek (gold)", "callsn MiniMapView OnClickButtonInternationalMapTeleport 1");
-    }
-    if (p.arrivedAt === 0 || now - p.arrivedAt < ARRIVE_SETTLE_MS) return { kind: "wait", reason: "chegando no Leebaek" };
+    if (p.gotoSentAt === 0) return act("goto", "ir ate o Leebaek", doTaskBody(FIRM_QUEST_ID));
+    const trip = travelStep(s, FIRM_SCENE, p, cfg.allowTeleport, now, FIRM_TRAVEL);
+    if (trip.kind === "teleport") return act("teleport", trip.name, trip.body);
+    if (trip.kind !== "arrived") return trip;
     // Em Jangan: aceita (repete com prazo se nao pegar).
     if (!p.takeSent || now - p.gotoSentAt >= GOTO_COOLDOWN_MS)
-      return act("take", "aceitar a missao do Firm", `callsi XTaskDocument OperateTask 2 ${FIRM_QUEST_ID} 1`, 8000);
+      return act("take", "aceitar a missao do Firm", operateTaskBody(FIRM_QUEST_ID, TASK_OP_TAKE), 8000);
     return { kind: "wait", reason: "esperando a missao aceitar" };
   }
   if (s.questStatus !== QUEST_TAKEN) return { kind: "done", reason: "Firm de hoje ja fechado" };
@@ -224,16 +194,8 @@ export function nextFirmStep(s: FirmSnapshot | null, cfg: FirmConfig, p: FirmPro
 }
 
 export function trackFirm(p: FirmProgress, s: FirmSnapshot | null, now: number): FirmProgress {
-  if (s && !p.huntStopped) {
-    if (s.safeToLeave === false && p.unsafeSince === 0) p = { ...p, unsafeSince: now };
-    else if (s.safeToLeave !== false && p.unsafeSince !== 0) p = { ...p, unsafeSince: 0 };
-  }
-  if (s?.pos && p.gotoSentAt > 0) {
-    const moved = p.lastPos !== undefined && Math.hypot(s.pos[0] - p.lastPos[0], s.pos[2] - p.lastPos[2]) > MOVE_MIN_M;
-    p = { ...p, lastPos: s.pos, movedAt: moved ? now : p.movedAt };
-  }
-  if (!s || p.gotoSentAt === 0 || p.arrivedAt !== 0 || s.scene !== FIRM_SCENE) return p;
-  return { ...p, arrivedAt: now };
+  if (s && !p.huntStopped) p = trackUnsafe(p, s.safeToLeave, now);
+  return trackTravel(p, s, now, FIRM_SCENE);
 }
 
 export function afterFirmAction(p: FirmProgress, step: FirmStep, now: number, s: FirmSnapshot | null): FirmProgress {
@@ -241,7 +203,7 @@ export function afterFirmAction(p: FirmProgress, step: FirmStep, now: number, s:
   if (step.id === "stophunt") return { ...p, huntStopped: true };
   if (step.id === "defend") return { ...p, defended: true };
   if (step.id === "goto") return { ...p, gotoSentAt: now };
-  if (step.id === "teleport") return { ...p, teleports: p.teleports + 1, teleportAt: now };
+  if (step.id === "teleport") return afterTeleport(p, now);
   if (step.id === "take") return { ...p, takeSent: true };
   if (step.id === "total") return { ...p, totalSent: true };
   if (step.id === "refresh") return { ...p, spins: p.spins + 1 };
@@ -280,16 +242,9 @@ export async function readFirmSnapshot(q: EngineQuery, cfg?: FirmConfig): Promis
     count: 0, askedNum: 0, tasks: [],
   };
   if (!s.inWorld) return s;
-  const LIST = "XTaskDocument get_TaskRecord m_TaskList";
-  const n = Math.min(await num(`${LIST} get_Count`, 0), 32);
-  for (let i = 0; i < n; i++) {
-    if ((await num(`${LIST} get_Item:${i} m_ID`)) === FIRM_QUEST_ID) {
-      s.questStatus = await num(`${LIST} get_Item:${i} m_Status`);
-      break;
-    }
-  }
+  s.questStatus = await findTaskStatus(q, FIRM_QUEST_ID);
   s.scene = await num("XScene get_SceneID");
-  s.navigating = (await q("GETP", "XTaskDocument get_IsNavigating")).bool === true;
+  s.navigating = await readNavigating(q);
   if (Array.isArray(player.corrected)) s.pos = player.corrected as number[];
   // Antes de parar a caca pra ir ao Leebaek: so com o char seguro.
   s.inCombat = player.inCombat === true;

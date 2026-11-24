@@ -325,6 +325,27 @@
               <div class="panel p-4 space-y-3">
                 <div class="flex items-center justify-between">
                   <div>
+                    <div class="text-sm font-semibold">Missão principal</div>
+                    <div class="text-xs text-muted">aceita a main quest, vai até o NPC pelo próprio jogo, caça os monstros do objetivo, entrega e segue pra próxima; roda a cada Iniciar bot, antes do Treino</div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-1 text-xs text-gray-300 cursor-pointer select-none"><input type="checkbox" id="act-mainquest" class="accent-gold w-4 h-4" /> Ativa</label>
+                    <span id="mq-status" class="pill bg-ink-600 text-muted">parado</span>
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-300">
+                  <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="mq-hunt" class="accent-gold w-4 h-4" checked /> Caçar nos objetivos de monstro e drop</label>
+                  <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="mq-teleport" class="accent-gold w-4 h-4" checked /> Viajar até o mapa da missão (gold)</label>
+                  <label class="flex items-center gap-2">Parar depois de <input type="number" id="mq-max" min="0" max="99" value="0" class="w-14 bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100" /> missões <span class="text-xs text-muted">(0 = sem limite)</span></label>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button id="btn-mq-save" class="btn btn-gold">Salvar config</button>
+                  <span class="text-xs text-muted">usar item, escolta e fase ficam pra fazer na mão</span>
+                </div>
+              </div>
+              <div class="panel p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
                     <div class="text-sm font-semibold">Guild utilities</div>
                     <div class="text-xs text-muted">sign-in da guilda, baús do sign-in e salário, no char principal; nunca o sign-in de Silk</div>
                   </div>
