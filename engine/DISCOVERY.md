@@ -933,3 +933,41 @@ codigo do cliente e ao vivo so com leitura (evento fechado).
   pede senha) e ausente no cliente 2.3.14 depois da atualizacao. Entrar por
   `callx XTeamDocument ReqTeamOp 7 -- i:2 q:<id> n i:1 s: i:0 u:0` nao abre a janela.
 - Qualquer dialogo quebrado ("UI missing" no logcat) derruba a proxima troca de cena: so reiniciar o jogo limpa.
+
+## Filtro de monstros: trocar o alvo do auto-play (2026-11-24)
+
+Pesquisa ao vivo (char principal Lv.87, North Taklamakan cena 100003, Niya Mage/Shaman Lv.77-78,
+auto-play ligado), so com comandos que o engine ja tem (GETP, ENTS, OBJV, FIND, `callx`).
+
+- Quem escolhe o alvo: os nos da behavior tree (`AIRunTimeFindTargetByDist`, `...ByType`,
+  `...ByTask`, `...ByHitLevel`, `...ByCircle`) chamam o `XAIGeneralMgr` (singleton `get_singleton`):
+  `FindTargetByDistance(GameObject, float, bool, float, float, int)`, `FindTargetByTask(GameObject,
+  uint)`, `FindTargetByHartedList`, `DoSelectNearest`... Tudo no XMainClient (interpretado): pela
+  parede do HybridCLR nao da pra hookar a busca e filtrar ali dentro.
+- `XAIComponent` (o `_ai` do jogador), campos lidos pelo OBJV: `_targets` 0xf8
+  (List<XEntity>), `_target` 0x118, `_target_type` 0x144, `_ignore_type` 0x160 (int, 0 no char),
+  `_target_monster` 0x164 (int, 0), `_priorityTargetType` 0x170 (`PriorityTargetType`: 0 Default,
+  1 Enemy, 2 Role). Getters `get_IgnoreTargetType`, `get_TargetMonster`, `get_PriorityTargetType`;
+  NAO ha setter desses tres, e o engine nao tem comando de escrever campo. Hipotese nao testada:
+  `_ignore_type` seria mascara de `EnitityType` lida pelo FindTarget (filtro por categoria nativo)
+  e `_target_monster` o monstro preferido. Testar exige um comando novo de escrita de campo.
+- **O alvo gruda**: amostrando o ENTS a cada 0,5 s, o `_target` fica no mesmo monstro ate ele
+  morrer (as vezes passa por 0 enquanto anda ou casta skill e volta pro mesmo). Depois da morte a BT
+  escolhe o proximo sozinha.
+- **Trocar o alvo FUNCIONA sem desligar a caca (provado)**:
+  `SKIL callx XEntityMgr get_Player _ai SetTarget 1 -- o:XEntityMgr|GetAll|get_Item:<idx>`.
+  Com o char indo pro alvo A, o `SetTarget(B)` mudou o `_target` em < 0,8 s; o char andou 30 m
+  ate B, matou B e a BT voltou a escolher alvo sozinha. `AutoPlayOn` ficou 1 o tempo todo.
+  Repetido no meio da luta (A ja apanhando): foi pra B (um Champion) e matou. Se a lista de odio
+  (`_enmity_list`, `FindTargetByHartedList`) puxa o char de volta pra um monstro ignorado que
+  esta batendo nele ficou inconclusivo: ali os monstros morrem em ~3 s.
+- Id do monstro: o ENTS e o GETP (`get_ID`) dao so os 32 bits baixos. O id real e UInt64 com bit
+  alto (`_attr _id` = 0x1000000000059fb5 pra 368565), por isso `XEntityMgr GetEntity:<id>`
+  pelo caminho volta nulo. Achar o objeto pelo indice do `GetAll` (comparando `get_ID`) e passar
+  com `o:`; ou `q:<id64>` num metodo que receba UInt64.
+- Especie do monstro: `get_Attributes _type_id` (UInt32 em 0x5c do `XOthersAttributes`):
+  Niya Mage 310011, Niya Shaman 310012. E a chave estavel pro filtro (o nome e traduzido). O
+  ENTS ainda nao manda o `_type_id`.
+- Categoria: o Champion ("Niya Shaman - Champion", 23064 HP contra 11532 do normal) veio com o
+  mesmo `_eEntity_Type` 0x19 dos normais, sem o bit Elite 0x80. Separar normal/champion/boss pelo
+  tipo nao basta: usar o sufixo do nome, o HP maximo ou o `_type_id`.
