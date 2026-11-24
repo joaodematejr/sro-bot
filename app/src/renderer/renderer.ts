@@ -2404,16 +2404,20 @@ async function onActivityToggle(id: string): Promise<void> {
     // contBusy como as diarias: assim Guild Boss, Sekhmet, diarias e Continental nao
     // entram junto (disputariam a caca e o char) e o checkTimedEvents para a missao
     // quando um evento abre. Com outra atividade ja rodando (Iniciar bot no meio do
-    // Firm, por exemplo), nao roda junto: fica pro Iniciar bot.
+    // Firm, por exemplo), nao roda junto. Treino que nao para a tempo: nao roda (como
+    // nas diarias), senao os dois disputariam a caca.
     if (!(await waitInWorld())) return;
     if (activitiesRunning || contBusy || gbBusy || swBusy) {
-      log("Missao principal: outra atividade rodando agora; ela entra no proximo Iniciar bot.");
+      log("Missao principal: outra atividade rodando agora, entao nao entra junto; ela roda na fila do Iniciar bot ou ao marcar \"Ativa\" de novo depois.");
       return;
     }
     activitiesRunning = true;
     contBusy = true;
     try {
-      if (trainRunning) await stopTrainLoop();
+      if (trainRunning && !(await stopTrainLoop())) {
+        log("Missao principal: o Treino nao parou a tempo; segue o Treino. Marque \"Ativa\" de novo daqui a pouco.");
+        return;
+      }
       if (polling) await runMainQuestActivity();
     } finally {
       activitiesRunning = false;
