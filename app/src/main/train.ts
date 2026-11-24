@@ -103,6 +103,8 @@ type Log = (msg: string) => void;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const POLL_MS = 3000;
+// Fora de combate no ponto: le mais rapido pra busca de monstro sair logo.
+const IDLE_POLL_MS = 1000;
 // Checagem do nivel da area: logo depois de ligar a caca e de tempos em tempos.
 const AREA_FIRST_MS = 10000;
 const AREA_EVERY_MS = 10 * 60 * 1000;
@@ -673,7 +675,7 @@ export async function runTrain(
       lastWait = step.reason;
       if (step.reason !== "cacando") log(step.reason);
     }
-    await sleep(POLL_MS);
+    await sleep(s?.inWorld && !s.dead && !s.inCombat && !prog.goingToSpot ? IDLE_POLL_MS : POLL_MS);
   }
   // Parado no meio de uma viagem (ponto ou cidade) a caca esta desligada: religa
   // antes de sair (a pausa das diarias na virada do dia para o loop assim).

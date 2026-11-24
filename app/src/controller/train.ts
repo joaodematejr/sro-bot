@@ -191,12 +191,13 @@ export const LEAVE_DEFEND_HP_PCT = 60;
 // esperando renascer; agora 15 s e o raio inteiro do ponto. 2026-11-24 06:15: parado
 // 20 s com um monstro a 22 m que o auto-play nao atacava (ele so pega ate ~16 m) e o
 // SEEK_CLEAR_M de 25 m segurava a busca; agora 15 m, e o tempo parado conta do
-// ultimo EXP ou combate, 6 s. Andar (TeleportNavigate)
+// ultimo EXP ou combate, 6 s. Mesmo dia, a pedido do usuario (ainda parado): 2 s,
+// 4 s entre buscas, e o loop le a cada 1 s fora de combate. Andar (TeleportNavigate)
 // DESLIGA o auto-play (visto ao vivo 11:34: 26 m em 3 s, auto desligado e o
 // combate comecou com ele parado), entao o main religa a caca ao chegar, ao
 // entrar em combate ou em SEEK_WALK_MAX_MS, o que vier primeiro.
-export const SEEK_IDLE_MS = 6000;
-export const SEEK_COOLDOWN_MS = 8000;
+export const SEEK_IDLE_MS = 2000;
+export const SEEK_COOLDOWN_MS = 4000;
 export const SEEK_CLEAR_M = 15;
 export const SEEK_MAX_M = 70;
 export const SEEK_ARRIVE_M = 5;

@@ -11,6 +11,7 @@ import {
   safeToStopHunt,
   leaveBlock,
   pickSeekTarget,
+  SEEK_COOLDOWN_MS,
   SEEK_IDLE_MS,
   SEEK_WALK_LONG_MS,
   SEEK_WALK_MAX_MS,
@@ -375,9 +376,11 @@ test("parado sem monstro: procura o mais perto dentro do ponto, so com tudo limp
   assert.equal(shouldSeek(s, { ...p, pauseReason: "pausa pro Continental" }, SEEK_IDLE_MS, -Infinity), false);
   assert.equal(shouldSeek(s, { ...p, goingToSpot: true }, SEEK_IDLE_MS, -Infinity), false);
   assert.equal(shouldSeek(s, p, SEEK_IDLE_MS, SEEK_IDLE_MS - 1000), false); // acabou de procurar
+  assert.equal(SEEK_IDLE_MS, 2000); // pedido do usuario em 2026-11-24
   // Saiu do combate agora (EXP ainda nao subiu): conta do combate.
   assert.equal(shouldSeek(s, p, SEEK_IDLE_MS + 1000, -Infinity, 2000), false);
   assert.equal(shouldSeek(s, p, SEEK_IDLE_MS + 2000, -Infinity, 2000), true);
+  assert.equal(shouldSeek(s, p, SEEK_IDLE_MS + 2000, SEEK_IDLE_MS + 2000 - SEEK_COOLDOWN_MS + 1, 2000), false); // 4 s entre buscas
   const pos: [number, number, number] = [1325, 0, 620];
   // Mais perto fora dos 15 m.
   assert.deepEqual(pickSeekTarget(pos, [[1325, 0, 680], [1355, 0, 620], [1500, 0, 620]], A), [1355, 0, 620]);
