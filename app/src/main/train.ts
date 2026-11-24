@@ -3,6 +3,8 @@
 
 import {
   afterTrainAction,
+  CLEAR_TARGET_BODY,
+  combatStuck,
   type DeathCarry,
   deathsAtStart,
   HUNT_ON,
@@ -157,6 +159,26 @@ type Query = (tag: string, body: string) => Promise<Record<string, unknown>>;
 // passou pelo leaveBlock: HP alto, fora de combate, nada a 10 m), espera o combate
 // acabar e troca. Atacado ou com o HP caindo na espera: religa a caca e desiste.
 // A caca sempre volta no fim. Devolve se o char chegou na linha nova.
+// Alvo da IA (pra entender o travamento): distancia e diferenca de altura.
+async function targetInfo(q: Query, pos?: [number, number, number]): Promise<string> {
+  try {
+    const T = "XEntityMgr get_Player _ai _target";
+    const c: number[] = [];
+    for (const off of ["", "+4", "+8"]) {
+      const r = await q("GETP", `${T} _correctedPosition${off}`);
+      if (typeof r.int !== "number") return c.length === 0 && /nulo/.test(String(r.erro)) ? " (IA sem alvo)" : "";
+      const b = new DataView(new ArrayBuffer(4));
+      b.setInt32(0, r.int, true);
+      c.push(b.getFloat32(0, true));
+    }
+    if (!pos) return "";
+    const dead = (await q("GETP", `${T} get_IsDead`)).bool === true;
+    return ` (alvo a ${Math.round(Math.hypot(c[0] - pos[0], c[2] - pos[2]))} m, altura ${Math.round(c[1] - pos[1])} m${dead ? ", morto" : ""})`;
+  } catch {
+    return "";
+  }
+}
+
 async function changeLineAtSpot(q: Query, line: number, log: Log): Promise<boolean> {
   await q("SKIL", HUNT_OFF);
   let ok = false;
@@ -411,6 +433,10 @@ export async function runTrain(
   let lastLevelingPhase = "";
   let lastSeekAt = 0;
   let lastCombatAt = -Infinity;
+  // Trecho em combate atual: desde quando e o menor HP% visto (preso em combate).
+  let combatSince = 0;
+  let combatMinHp = 100;
+  let lastUnstickAt = -Infinity;
   // Skills e maestrias: confere na partida e a cada nivel novo (so faz algo se o
   // nivel do char passou das maestrias usadas).
   let skillsCheckedLevel = -1;
@@ -586,7 +612,19 @@ export async function runTrain(
     }
     // Parado sem alvo: anda ate o monstro mais perto e religa a caca (andar
     // desliga o auto-play; a caca volta sempre, mesmo se algo falhar).
-    if (s?.inCombat) lastCombatAt = now;
+    if (s?.inCombat) {
+      if (lastCombatAt < now - 2 * POLL_MS) { combatSince = now; combatMinHp = 100; }
+      lastCombatAt = now;
+      if (s.hp !== undefined && s.maxHp) combatMinHp = Math.min(combatMinHp, (100 * s.hp) / s.maxHp);
+    }
+    if (pauseRequested === null && combatStuck(s, prog, now, combatSince, combatMinHp, lastUnstickAt)) {
+      lastUnstickAt = now;
+      log(`em combate ha ${Math.round((now - combatSince) / 1000)} s sem matar e sem tomar dano${await targetInfo(q, s?.pos)}: largando o alvo e religando a caca`);
+      await q("SKIL", CLEAR_TARGET_BODY);
+      await q("SKIL", RESET_BORN_BODY);
+      await q("SKIL", HUNT_ON);
+      prog = { ...prog, lastGainAt: Date.now() };
+    }
     if (pauseRequested === null && shouldSeek(s, prog, now, lastSeekAt, lastCombatAt) && s?.pos && s.scene !== undefined) {
       lastSeekAt = now;
       const t = pickSeekTarget(s.pos, await readEnemyPositions(q), spot);
