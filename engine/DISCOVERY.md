@@ -886,6 +886,23 @@ codigo do cliente e ao vivo so com leitura (evento fechado).
   e caca em volta dele (18 m). `StopFollow` DESLIGA a IA: quem parar de seguir perto de
   monstro precisa religar a caca. O `ResetBehaviorTree` (e o `SetAutoEnable` do liga caca)
   respeita o Follow.
+- Buff de skill na party (2026-11-24, char principal, so leitura: GETP, OBJV, ENUM e FIND, sem
+  acao). O auto-play do jogo ja buffa aliado, sem cast manual. A arvore da IA do char
+  (`XEntityMgr get_Player _ai _behavior_tree _tree_name` = `AutoFight_Player`; percorrida no
+  vivo por OBJV de `_root _child` e `_list_node get_Item:i`) tem, logo depois do ramo de pegar
+  item e antes de procurar monstro, a sequencia `AIRuntimeInstallLoopSkill` ->
+  `AIRuntimeDoSelectSkillAndAlly` (alvo `allytarget`) -> `AIRunTimeTargetInCastRange` +
+  `AIRuntimeDoCastSkill` (ou `AIRuntimeNavToTarget` ate o aliado). O ramo de ataque tambem
+  tem `AIRuntimeDoSelectSkillAndTarget` com `_ally_target_name` = `allytarget`.
+  Quem vem primeiro e a opcao `XOptionsDefine.PriorBuffTarget` = 4040, enum
+  `PriorityBuffType` 0 Leader, 1 Member, 2 Self; a IA guarda em `XAIComponent
+  _priorityBuffType` (0x174, `get_PriorityBuffType`). Lidos juntos: 4040 = 1 e
+  `_priorityBuffType` = 1, como `PriorTarget` 4020 = 0 e `_priorityTargetType` = 0
+  (`PriorityTargetType` 0 Default, 1 Enemy, 2 Role). Gravar: o mesmo `SetValue(4040, v, 1)`
+  das outras opcoes do Treino. Outros: `XSkillCore SkillTargetsAlly()`,
+  `BattleSkillHandler ImpCast(int)` (cast pelo botao da barra, nao usado).
+  Sem prova ao vivo: o buff caindo de fato num membro (o char estava sem party) e a arvore
+  `AutoFight_Team` do Follow (nao percorrida).
 
 ## Auto-play: ponto de nascimento da IA (2026-11-07)
 
