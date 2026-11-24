@@ -449,6 +449,61 @@ pedidos de ajuda, 3 trocas.
 - Nao exercitado: pedir ajuda (`SendDailyTaskAskHelp`), renovar, comprar o item
   que falta, e a recompensa das 3 tarefas.
 
+## Missao principal (main quest), 2026-11-24
+
+Lido ao vivo no char principal (nivel 87, cena 100003), so por GETP/OBJV/ENUM/FIND,
+sem mandar nenhuma acao. Esse char ja terminou a linha principal, entao nada abaixo
+foi exercitado com uma main quest aberta.
+
+- `XTaskDocument` (get_Doc), campos: `m_TaskRecord` (0x88, `XTaskRecord`),
+  `m_TaskMonstersKilled` (0xb8, Dictionary<uint,uint>), `m_NaviTask` (0xc8),
+  `_taskNavigator` (0xd0), `_continueDoTaskID` (0xd8), `CurrentMainTask` (0xf0,
+  XTaskInfo, nulo aqui). Metodos uteis: `get_MainTask`, `IsHaveMainTask()` (false aqui),
+  `GetTaskStatue(XTaskType)` (status da linha daquele tipo; `GetTaskStatue:1` = 4
+  Over aqui), `GetTaskData(uint)` (RowData da tabela pelo ID, nulo pra ID que nao
+  existe), `GetNextTaskData(uint)`, `FindTaskInfo(uint)`, `DoMainTask(XTaskInfo)`,
+  `DoTask(uint, bool)`, `OperateTask(int, TaskOPEnum)`, `CanAutoContinue(XTaskInfo)`,
+  `IsClientFinishTask(TaskConnType)`, `StopNavigatingTask()`.
+- `XTaskRecord`: `m_TaskList` (0x10), `m_FinishedTasks` (0x18, List<uint>, 368 IDs
+  aqui), `m_MainTask` (0x20, XTaskInfo, nulo aqui).
+- `XTaskInfo`: `m_ID` 0x10, `m_Status` 0x14 (`KKSG.TaskStatus`), `m_State` 0x18
+  (`NpcTaskState`), `m_Conditions` 0x20 (List<`KKSG.TaskConditionInfo`>, vazia com a
+  missao em CanTake), `m_TableData` 0x28 (`TaskTableNew.RowData`), `m_Dialogs` 0x30.
+- `KKSG.TaskConditionInfo` (protobuf): `get_type` (`TaskConnType`), `get_id`,
+  `get_step`, `get_max_step`. Progresso do objetivo = step/max_step.
+- `TaskTableNew.RowData`: `TaskType` 0x10, `TaskID` 0x14, `PreTaskID` 0x18 (uint[]),
+  `BeginTaskNPCID` 0x20, `EndTaskNPCID` 0x28, `RequiredLevel` 0x30, `TaskTitle`/
+  `TaskDesc` (chaves de traducao, ex. "TaskListNew_TaskTitle_1000005"), `TargetParam`
+  0x80, `CondType` 0x88 (mesmos valores do `TaskConnType`), `CondParam` 0x90
+  (int[]), `TaskScene` 0xb8 (0 = sem cena fixa), `TaskPos` 0xc0.
+- Enums:
+  - `XTaskType`: TT_Main 1, TT_Side 2, TT_GuildDailyTask 4 (Firm 2222),
+    TT_GuildWeeklyBountyTask 7 (2223), TT_BackFlowTask 8, TT_SubServerTask 9,
+    TT_ScrollTask 10 (2224).
+  - `TaskStatus`: CanTake 1, Taked 2, Finish 3, Over 4.
+  - `TaskOPEnum`: TAKE_TASK 1, DONE_TASK 2, FINISH_TASK 3.
+  - `NpcTaskState`: TaskEnd 0, TaskBegin 1, TaskInprocess 2, Normal 3, Invalid 4.
+  - `TaskConnType`: ItemID 1, StageID 2, MonsterID 3, ItemTypeQuality 4, Activity 5,
+    WorldBossRank 6, StageType 7, IncLevel 8, FindPeople 9, NpcTalk 10, UseItem 11,
+    CollectItem 12, SearchZone 13, Answer 14, MonsterDropItem 15, ConvoyNpc 16,
+    KillEnemyInSpecialScene 17, KillMonsterOnStaticMap 18, CompleteSceneType 19.
+- **Como achar a main quest**: na `m_TaskList`, a entrada com
+  `m_TableData TaskType` = 1. A faixa de IDs nao e confiavel sozinha: varrendo o
+  historico, as 288 main quests vao de 1000000 a 4000105 (de 5 em 5, um milhao por
+  capitulo), mas as 80 de TaskType 9 (SubServer) moram na mesma faixa
+  (1000011 a 4000101).
+- Fim da linha: a ultima main deste char e 4000105 (RequiredLevel 73, NPC 1000 no
+  comeco e no fim, CondType 12 CollectItem) e `GetNextTaskData:4000105` e nulo.
+- Objetivo pela tabela (amostra): 1000000 CondType 10 (falar com o NPC 206);
+  1000005 CondType 3, CondParam [110001, 5] (matar 5 do monstro 110001);
+  1000010 CondType 1, CondParam [400000016, 3, 110001] (3 itens que o monstro
+  110001 dropa); 1000015 CondType 11 (usar o item 400000017); 3000000 CondType 3.
+- Nao provado (fica pra um char com a linha aberta): o que `DoTask(id, 1)` faz com
+  a missao em Taked (se anda ate a area do monstro ou ate o NPC), se objetivo de
+  falar com NPC precisa de `OperateTask(id, 2)` (DONE) e se a entrega e
+  `OperateTask(id, 3)` (FINISH). O controller da missao principal usa essas
+  hipoteses com limite de tentativas e desiste avisando.
+
 ## Atualizacao do jogo (hot update do launcher), 2026-11-05
 
 Tudo no `Core.dll` (AOT), que existe antes do `XMainClient`. Por isso o engine
