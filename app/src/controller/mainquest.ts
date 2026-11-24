@@ -67,6 +67,9 @@ export interface MainQuestSnapshot extends TravelSnapshot {
   safeToLeave?: boolean; // fora de combate, HP alto e sem monstro perto
   quest: MainQuest | null;
   lineStatus?: number; // GetTaskStatue(TT_Main): 4 = linha principal acabou
+  // false = alguma leitura da lista ou da missao falhou: "sem missao" nao e confiavel
+  // (undefined conta como ok).
+  listOk?: boolean;
 }
 
 export type MainQuestLeg = "take" | "hunt" | "talk" | "other" | "finish" | "over";
@@ -155,6 +158,8 @@ export function nextMainQuestStep(s: MainQuestSnapshot | null, cfg: MainQuestCon
   if (s.dead) return { kind: "fail", reason: "char morto; missao principal fica pra depois" };
   if (p.defended) return { kind: "fail", reason: "atacado com HP baixo seguindo a missao; caca religada, missao principal fica pra depois" };
   if (mustDefend(p.huntOff, s.inCombat, s.hpPct)) return act("defend", "atacado com HP baixo seguindo a missao: religar a caca", JSON.stringify({ on: 1 }));
+  // Leitura falha nao vira "missao entregue" nem "linha concluida": espera a proxima.
+  if (s.listOk === false) return { kind: "wait", reason: "leitura da lista de missoes falhou; tentando de novo" };
   const done = p.completed.length;
   if (cfg.maxQuests > 0 && done >= cfg.maxQuests) return { kind: "done", reason: `${done} missao(oes) principal(is) entregue(s) (limite ${cfg.maxQuests})` };
   const q = s.quest;
@@ -216,7 +221,7 @@ export function nextMainQuestStep(s: MainQuestSnapshot | null, cfg: MainQuestCon
 // Muda de perna (missao nova, status novo ou objetivo cumprido): zera a viagem e
 // as tentativas. Missao que saiu da lista ou mudou de ID conta como entregue.
 export function trackMainQuest(p: MainQuestProgress, s: MainQuestSnapshot | null, now: number): MainQuestProgress {
-  if (!s || !s.inWorld) return p;
+  if (!s || !s.inWorld || s.listOk === false) return p;
   const q = s.quest && s.quest.status !== TASK_OVER ? s.quest : null;
   if (p.questId > 0 && p.questId !== q?.id && !p.completed.includes(p.questId)) p = { ...p, completed: [...p.completed, p.questId] };
   if (!q) return { ...p, questId: 0, key: "", idleSince: p.idleSince || now };
@@ -270,23 +275,34 @@ export async function readMainQuestSnapshot(q: EngineQuery): Promise<MainQuestSn
   if (Array.isArray(player.corrected)) s.pos = player.corrected as number[];
   s.inCombat = player.inCombat === true;
   s.hpPct = hpPercent(player.hp, player.maxHp);
-  const n = Math.min(await num(`${TASK_LIST} get_Count`, 0), 32);
-  for (let i = 0; i < n && !s.quest; i++) {
+  // Cada leitura que falha marca listOk = false (o num devolve -1).
+  s.listOk = true;
+  const must = async (body: string) => {
+    const v = await num(body);
+    if (v < 0) s.listOk = false;
+    return v;
+  };
+  const n = Math.min(await must(`${TASK_LIST} get_Count`), 32);
+  for (let i = 0; i < n && !s.quest && s.listOk; i++) {
     const it = `${TASK_LIST} get_Item:${i}`;
-    if ((await num(`${it} m_TableData TaskType`)) !== TASK_TYPE_MAIN) continue;
+    if ((await must(`${it} m_TableData TaskType`)) !== TASK_TYPE_MAIN) continue;
+    const id = await must(`${it} m_ID`);
+    const status = await must(`${it} m_Status`);
+    // Main ja fechada (Over) que ainda esta na lista: segue procurando a aberta.
+    if (id <= 0 || status < 0 || status === TASK_OVER) continue;
     const quest: MainQuest = {
-      id: await num(`${it} m_ID`),
-      status: await num(`${it} m_Status`),
+      id,
+      status,
       scene: await num(`${it} m_TableData TaskScene`, 0),
       level: await num(`${it} m_TableData RequiredLevel`, 0),
       conds: [],
     };
-    const cn = Math.min(await num(`${it} m_Conditions get_Count`, 0), 8);
+    const cn = Math.min(await must(`${it} m_Conditions get_Count`), 8);
     for (let j = 0; j < cn; j++) {
       const c = `${it} m_Conditions get_Item:${j}`;
-      quest.conds.push({ type: await num(`${c} get_type`, 0), id: await num(`${c} get_id`, 0), step: await num(`${c} get_step`, 0), max: await num(`${c} get_max_step`, 0) });
+      quest.conds.push({ type: await must(`${c} get_type`), id: await must(`${c} get_id`), step: await must(`${c} get_step`), max: await must(`${c} get_max_step`) });
     }
-    if (quest.id > 0) s.quest = quest;
+    if (s.listOk) s.quest = quest;
   }
   const line = await q("GETP", `XTaskDocument GetTaskStatue:${TASK_TYPE_MAIN}`);
   if (line.ok === true && typeof line.int === "number") s.lineStatus = line.int;

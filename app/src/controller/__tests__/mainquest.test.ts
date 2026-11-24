@@ -266,3 +266,61 @@ test("leitura: acha a entrada de TaskType 1 na lista e le as condicoes", async (
   assert.equal(s?.lineStatus, 2);
   assert.equal(s?.safeToLeave, true);
 });
+
+// Lista falsa pro leitor: cada entrada e [TaskType, m_ID, m_Status]; `fail` sao
+// corpos de GETP que respondem ok:false (leitura falha).
+function fakeList(entries: [number, number, number][], fail: string[] = []) {
+  const L = "XTaskDocument get_TaskRecord m_TaskList";
+  const rows: Record<string, number> = { "XScene get_SceneID": 100001, [`${L} get_Count`]: entries.length, "XTaskDocument GetTaskStatue:1": 2, "XEntityMgr GetAll get_Count": 0 };
+  entries.forEach(([type, id, status], i) => {
+    const it = `${L} get_Item:${i}`;
+    Object.assign(rows, { [`${it} m_TableData TaskType`]: type, [`${it} m_ID`]: id, [`${it} m_Status`]: status, [`${it} m_TableData TaskScene`]: 100001, [`${it} m_TableData RequiredLevel`]: 1, [`${it} m_Conditions get_Count`]: 0 });
+  });
+  return async (tag: string, body: string): Promise<Record<string, unknown>> => {
+    if (tag === "CONN") return { player: { ok: true, level: 12, hp: 1000, maxHp: 1000, inCombat: false, corrected: [1, 0, 2] } };
+    if (body === "XTaskDocument get_IsNavigating") return { ok: true, bool: false };
+    if (fail.includes(body)) return { ok: false, erro: "timeout" };
+    return body in rows ? { ok: true, int: rows[body] } : { ok: false };
+  };
+}
+
+// Sugestao da revisao do PR #84: main ja fechada (Over) ainda na lista nao tampa a aberta.
+test("leitura: pula main com status 4 (Over) e pega a aberta seguinte", async () => {
+  const s = await readMainQuestSnapshot(fakeList([[7, 2223, 1], [1, 1000005, TASK_OVER], [1, 1000010, TASK_CAN_TAKE]]));
+  assert.equal(s?.quest?.id, 1000010);
+  assert.equal(s?.listOk, true);
+  const only = await readMainQuestSnapshot(fakeList([[1, 1000005, TASK_OVER]]));
+  assert.equal(only?.quest, null);
+  assert.equal(only?.listOk, true);
+});
+
+// Sugestao da revisao do PR #84: leitura falha no meio nao pode contar missao
+// entregue (inflava o limite "Parar depois de N missoes") nem concluir a passada.
+test("leitura falha nao conta entrega nem conclui; leitura boa sem a missao conta", async () => {
+  const L = "XTaskDocument get_TaskRecord m_TaskList";
+  // Cada leitura que falha marca listOk = false e nao devolve missao.
+  for (const fail of [`${L} get_Count`, `${L} get_Item:1 m_TableData TaskType`, `${L} get_Item:1 m_ID`, `${L} get_Item:1 m_Status`, `${L} get_Item:1 m_Conditions get_Count`]) {
+    const s = await readMainQuestSnapshot(fakeList([[7, 2223, 1], [1, 1000005, TASK_TAKEN]], [fail]));
+    assert.equal(s?.listOk, false, fail);
+    assert.equal(s?.quest, null, fail);
+  }
+  // Cacando a 1000005 e a leitura falha: nada muda e o passo espera.
+  const r = runner({ ...DEFAULT_MAIN_QUEST_CONFIG, maxQuests: 1 });
+  const hunting = snap({ quest: quest(1000005, TASK_TAKEN, [KILL(2)]) });
+  r.p = { ...trackMainQuest(r.p, hunting, 0), huntOff: false, huntOnAt: 1000 };
+  const bad = snap({ quest: null, listOk: false });
+  const st = r.step(bad, 5000);
+  assert.equal(st.kind, "wait");
+  assert.match(st.kind === "wait" ? st.reason : "", /leitura da lista de missoes falhou/);
+  assert.deepEqual(r.p.completed, []);
+  assert.equal(r.p.questId, 1000005);
+  // Mesmo com a linha marcada como acabada, leitura falha nao conclui.
+  assert.equal(r.step(snap({ quest: null, listOk: false, lineStatus: TASK_OVER }), 6000).kind, "wait");
+  // Volta a ler bem e a missao segue na lista: continua cacando, sem entrega contada.
+  assert.equal(r.step(hunting, 7000).kind, "wait");
+  assert.deepEqual(r.p.completed, []);
+  // Leitura boa sem a missao: ai sim conta a entrega (e o limite de 1 conclui).
+  const gone = r.step(snap({ quest: null, listOk: true }), 8000);
+  assert.deepEqual(r.p.completed, [1000005]);
+  assert.equal(gone.kind, "done");
+});
