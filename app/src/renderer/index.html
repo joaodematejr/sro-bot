@@ -249,6 +249,15 @@
                   <label class="flex items-center gap-2 cursor-pointer select-none md:col-span-2"><input type="checkbox" id="tr-team-accept-fg" class="accent-gold w-4 h-4" /> Sem time, aceitar convite de amigo ou da guilda</label>
                   <label class="flex items-center gap-2 md:col-span-2">sem time, aceitar convite de <input type="text" id="tr-team-accept" maxlength="400" placeholder="nomes separados por vírgula" class="flex-1 bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100" /></label>
                   <label class="flex items-center gap-2 cursor-pointer select-none md:col-span-2"><input type="checkbox" id="tr-team-follow" class="accent-gold w-4 h-4" /> Membro: seguir o líder (o Follow do jogo: anda atrás dele, até de mapa, e caça em volta; o ponto salvo fica de lado)</label>
+                  <label class="flex items-center gap-2 md:col-span-2">Buff de skill na party: o auto-play buffa primeiro
+                    <select id="tr-team-buff" class="bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100">
+                      <option value="">como está no jogo</option>
+                      <option value="leader">o líder</option>
+                      <option value="member">os membros</option>
+                      <option value="self">o próprio char</option>
+                    </select>
+                    <span class="text-xs text-muted">(skills de buff na barra)</span>
+                  </label>
                   <div class="md:col-span-2 stat-label">Itens de buff (só caçando no ponto, um de cada vez)</div>
                   <label class="flex items-center gap-2 cursor-pointer select-none md:col-span-2"><input type="checkbox" id="tr-booster" class="accent-gold w-4 h-4" /> Exp Booster (200% 1 h, depois 200% 2 h, depois 100%)</label>
                   <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="tr-buff-dano" class="accent-gold w-4 h-4" /> Pergaminho de dano 20% (30 min)</label>

@@ -21,7 +21,12 @@ export interface TeamConfig {
   acceptFrom?: string[]; // sem time: aceita convite destes nomes
   acceptFriendsGuild?: boolean; // sem time: aceita convite de amigo ou da guilda
   follow?: boolean; // membro: segue o lider (o Follow do jogo)
+  // Buff de skill na party: quem o auto-play do jogo buffa primeiro (opcao 4040,
+  // PriorBuffTarget). Sem valor o Treino nao mexe na opcao. Ver controller/train.ts.
+  buffTarget?: BuffTarget;
 }
+
+export type BuffTarget = "leader" | "member" | "self";
 
 export interface TeamBrief {
   teamID: number;

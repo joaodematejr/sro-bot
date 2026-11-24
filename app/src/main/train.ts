@@ -53,7 +53,7 @@ import {
   inSafeTown,
   x10LeaveDue,
   supplyWarning,
-  TRAIN_OPTIONS,
+  trainOptions,
   trainSpots,
   type TrainConfig,
   type TrainSnapshot,
@@ -364,10 +364,11 @@ export async function runTrain(
   }
   const q: Query = (tag, body) => sendCommand(host, port, tag, body);
 
-  const ids = [...TRAIN_OPTIONS.map((o) => o.id), OPT.HpHealItem1, OPT.MpHealItem1];
+  const wanted = trainOptions(cfg.team);
+  const ids = [...wanted.map((o) => o.id), OPT.HpHealItem1, OPT.MpHealItem1];
   const opts = await readOptions(q, ids);
   if (opts[OPT.AutoHeal] === undefined) log("opcoes do auto-play nao responderam; treinando com o que o jogo tem.");
-  const fixes = optionFixes(opts);
+  const fixes = optionFixes(opts, wanted);
   for (const f of fixes) {
     await q("SKIL", f.body);
     log(`ligado: ${f.name}.`);

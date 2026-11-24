@@ -41,6 +41,7 @@ export const OPT = {
   MpHealItem1: 4036,
   MpHealItem2: 4037,
   ReturnFarming: 4039,
+  PriorBuffTarget: 4040,
 } as const;
 
 // RevivePlace: o XAutoPlayDocument SetupAutoRevive trata 0 como no local e
@@ -74,7 +75,7 @@ export interface TrainSpot {
   range?: number; // raio do ponto em metros (padrao SPOT_LEAVE_M)
 }
 
-import type { TeamConfig } from "./team";
+import type { BuffTarget, TeamConfig } from "./team";
 
 export interface TrainConfig {
   deathLimit: number; // para depois de N mortes (0 = nunca)
@@ -219,11 +220,34 @@ export function setOptionBody(id: number, value: number): string {
   return `callsi XOptionsDocument SetValue 3 ${id} ${value} 1`;
 }
 
+// Buff de skill na party (2026-11-24, lido ao vivo so por GETP/OBJV/ENUM/FIND):
+// o auto-play do jogo ja buffa aliado. A arvore AutoFight_Player roda, antes de
+// procurar monstro, o ramo
+// AIRuntimeDoSelectSkillAndAlly -> "allytarget" -> AIRuntimeDoCastSkill (ou anda
+// ate o aliado fora do alcance), com as skills de buff da barra. Quem vem
+// primeiro e a opcao PriorBuffTarget (4040), enum PriorityBuffType: 0 Leader,
+// 1 Member, 2 Self; a IA le em XAIComponent _priorityBuffType (bateu 1 = 1 no
+// char principal, como PriorTarget 4020 = _priorityTargetType).
+export const BUFF_TARGET_VALUE: Record<BuffTarget, number> = { leader: 0, member: 1, self: 2 };
+const BUFF_TARGET_NAME: Record<BuffTarget, string> = {
+  leader: "buff de skill primeiro no lider",
+  member: "buff de skill primeiro nos membros da party",
+  self: "buff de skill primeiro no proprio char",
+};
+
+// Opcoes do treino com as da party: o alvo do buff so entra quando escolhido.
+export function trainOptions(team?: TeamConfig): { id: number; name: string; value: number }[] {
+  const t = team?.buffTarget;
+  if (!t || !(t in BUFF_TARGET_VALUE)) return TRAIN_OPTIONS;
+  return [...TRAIN_OPTIONS, { id: OPT.PriorBuffTarget, name: BUFF_TARGET_NAME[t], value: BUFF_TARGET_VALUE[t] }];
+}
+
 // Comandos pra deixar as opcoes do treino ligadas (so as que estao diferentes).
 export function optionFixes(
   current: Record<number, number | undefined>,
+  options: { id: number; name: string; value: number }[] = TRAIN_OPTIONS,
 ): { id: number; name: string; body: string; original: number }[] {
-  return TRAIN_OPTIONS.filter((o) => current[o.id] !== undefined && current[o.id] !== o.value).map((o) => ({
+  return options.filter((o) => current[o.id] !== undefined && current[o.id] !== o.value).map((o) => ({
     id: o.id,
     name: o.name,
     body: setOptionBody(o.id, o.value),
