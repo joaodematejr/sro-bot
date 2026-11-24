@@ -231,6 +231,22 @@
                   <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="tr-sw-deaths-on" class="accent-gold w-4 h-4" /> depois de <input type="number" id="tr-sw-deaths" min="1" max="99" value="3" class="w-14 bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100" /> morte(s) no ponto</label>
                   <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="tr-sw-hp-on" class="accent-gold w-4 h-4" /> com HP abaixo de <input type="number" id="tr-sw-hp" min="10" max="90" value="50" class="w-14 bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100" />% no ponto (troca fora de combate)</label>
                   <label class="flex items-center gap-2 cursor-pointer select-none md:col-span-2"><input type="checkbox" id="tr-players" class="accent-gold w-4 h-4" /> Jogador de fora do time caçando a menos de 80 m por 2 min: trocar pro canal mais vazio (nunca o Activity Channel); sem canal livre, ir pro próximo ponto</label>
+                  <div class="md:col-span-2 stat-label">Filtro de monstros</div>
+                  <div class="md:col-span-2 text-xs text-muted">O auto-play escolhe o alvo. Se ele pegar um monstro ignorado, o bot manda atacar o permitido mais perto (até 50 m). Sem permitido por perto, ou se o ignorado insistir (batendo no char), deixa matar.</div>
+                  <div class="md:col-span-2 flex flex-wrap items-center gap-4">
+                    <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="tr-flt-monster" class="accent-gold w-4 h-4" /> Ignorar normais</label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="tr-flt-elite" class="accent-gold w-4 h-4" /> Ignorar champion <span class="text-xs text-muted">(Champion, Giant, Elite)</span></label>
+                    <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="tr-flt-boss" class="accent-gold w-4 h-4" /> Ignorar boss</label>
+                  </div>
+                  <div class="md:col-span-2 space-y-1">
+                    <div class="text-xs text-muted">Espécies ignoradas:</div>
+                    <div id="tr-flt-species" class="space-y-1"></div>
+                    <div class="flex items-center gap-2">
+                      <button id="btn-tr-flt-near" class="btn">Ver monstros por perto</button>
+                      <span id="tr-flt-near-msg" class="text-xs text-muted"></span>
+                    </div>
+                    <div id="tr-flt-near" class="space-y-1"></div>
+                  </div>
                   <div class="md:col-span-2 stat-label">Parar o treino também</div>
                   <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="tr-stop-level-on" class="accent-gold w-4 h-4" /> no nível <input type="number" id="tr-stop-level" min="1" max="140" value="90" class="w-16 bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100" /> com <input type="number" id="tr-stop-exp" min="0" max="100" value="0" class="w-14 bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100" />% de EXP</label>
                   <label class="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="tr-stop-gold-on" class="accent-gold w-4 h-4" /> com gold abaixo de <input type="number" id="tr-stop-gold" min="0" value="100000" class="w-28 bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100" /></label>

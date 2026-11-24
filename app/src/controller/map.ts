@@ -3,7 +3,7 @@
 //
 // Fonte principal: o comando ENTS do engine (uma consulta so): jogador, alvo do
 // auto-play (XAIComponent._target), entidades ate o raio [tipo, id, x, z, nivel,
-// morto, hp, maxHp, nome] e itens no chao (XLevelDoodadMgr._doodads). Engine sem
+// morto, hp, maxHp, nome, especie] e itens no chao (XLevelDoodadMgr._doodads). Engine sem
 // ENTS (responde o estado do jogador pra tag desconhecida): leitura reserva pelo
 // GETP, mais lenta, sem HP e sem itens no chao.
 
@@ -42,6 +42,7 @@ export interface MapEntity {
   hp: number; // 0 = nao lido
   maxHp: number;
   name: string;
+  typeId?: number; // especie (XAttributes._type_id); ausente em engine sem ela
 }
 
 export interface MapDrop {
@@ -93,9 +94,11 @@ export function parseEnts(r: Record<string, unknown>, team: Set<number>): MapSna
   const ents: MapEntity[] = [];
   for (const e of r.ents as unknown[]) {
     if (!Array.isArray(e) || e.length < 9) continue;
-    const [type, id, x, z, level, dead, hp, maxHp, name] = e as [number, number, number, number, number, number, number, number, string];
+    const [type, id, x, z, level, dead, hp, maxHp, name, typeId] = e as [number, number, number, number, number, number, number, number, string, number?];
     if (typeof x !== "number" || typeof z !== "number") continue;
-    ents.push({ kind: classifyEntity(type, id, team, String(name ?? "")), id, x, z, level, dead: dead === 1, hp, maxHp, name: String(name ?? "") });
+    const ent: MapEntity = { kind: classifyEntity(type, id, team, String(name ?? "")), id, x, z, level, dead: dead === 1, hp, maxHp, name: String(name ?? "") };
+    if (typeof typeId === "number" && typeId > 0) ent.typeId = typeId;
+    ents.push(ent);
   }
   const drops: MapDrop[] = [];
   for (const d of Array.isArray(r.drops) ? (r.drops as unknown[]) : []) {

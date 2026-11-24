@@ -100,6 +100,18 @@ import { sellJunk } from "./sell";
 import { shouldSell } from "../controller/sell";
 import { gameDay } from "../controller/daily";
 import { queryPlayer, sendCommand } from "./engine";
+import { MAP_RADIUS_M, parseEnts } from "../controller/map";
+import {
+  afterSwap,
+  CATEGORY_LABEL,
+  filterActive,
+  monsterFilterStep,
+  monsterLabel,
+  newFilterMemory,
+  SWAP_MAX_M,
+  targBody,
+  targResult,
+} from "../controller/monsterfilter";
 
 type Log = (msg: string) => void;
 
@@ -438,6 +450,20 @@ export async function runTrain(
   let combatSince = 0;
   let combatMinHp = 100;
   let lastUnstickAt = -Infinity;
+  // Filtro de monstros: alvo ignorado troca pro permitido mais perto (TARG).
+  const filterCfg = filterActive(cfg.monsterFilter) ? cfg.monsterFilter : undefined;
+  let filterMem = newFilterMemory();
+  let filterOff = false; // engine sem TARG: avisa uma vez e para de tentar
+  let filterNoSpeciesWarned = false;
+  let filterKeepLog = "";
+  const filterSwapLogAt = new Map<string, number>(); // texto -> quando saiu (nao repete em 60 s)
+  if (filterCfg) {
+    const parts = [
+      ...(filterCfg.categories ?? []).map((c) => CATEGORY_LABEL[c]),
+      ...(filterCfg.species ?? []).map((s) => s.name || `especie ${s.id}`),
+    ];
+    log(`filtro de monstros ligado: ignorando ${parts.join(", ")}.`);
+  }
   // Skills e maestrias: confere na partida e a cada nivel novo (so faz algo se o
   // nivel do char passou das maestrias usadas).
   let skillsCheckedLevel = -1;
@@ -648,6 +674,38 @@ export async function runTrain(
         prog = { ...prog, lastGainAt: Date.now() };
         await sleep(POLL_MS);
         continue;
+      }
+    }
+    // Filtro de monstros: so cacando (vivo, sem viagem, sem parada ou pausa). O
+    // alvo gruda ate o monstro morrer, entao uma troca por monstro basta.
+    if (filterCfg && !filterOff && s?.inWorld && !s.dead && !prog.goingToSpot && !prog.stopReason && pauseRequested === null) {
+      const fsnap = parseEnts(await q("ENTS", String(MAP_RADIUS_M)), new Set());
+      if (fsnap && !filterNoSpeciesWarned && filterCfg.species?.length
+        && fsnap.ents.some((e) => e.kind === "monster") && !fsnap.ents.some((e) => e.typeId !== undefined)) {
+        filterNoSpeciesWarned = true;
+        log("filtro de monstros: o engine instalado nao manda a especie do monstro; so as categorias valem ate reinjetar o engine.");
+      }
+      const fs = fsnap ? monsterFilterStep(fsnap, filterCfg, filterMem, now) : { kind: "none" as const };
+      if (fs.kind === "swap") {
+        const res = targResult(await q("TARG", targBody(fs.to.id)));
+        if (res === "old-engine") {
+          filterOff = true;
+          log("filtro de monstros: o engine instalado nao troca o alvo (falta o TARG); reinjete o engine pra usar o filtro.");
+        } else if (res === "ok") {
+          filterMem = afterSwap(filterMem, fs.from.id, now);
+          filterKeepLog = "";
+          const text = `filtro: largando ${fs.from.name || "monstro"} (ignorado) e indo pro ${fs.to.name || "monstro"}`;
+          if (now - (filterSwapLogAt.get(text) ?? -Infinity) >= 60000) {
+            filterSwapLogAt.set(text, now);
+            log(`${text} a ${Math.round(fs.dist)} m.`);
+          }
+        }
+      } else if (fs.kind === "keep") {
+        const text = fs.why === "insiste"
+          ? `filtro: ${monsterLabel(fs.target)} voltou a ser alvo (deve estar batendo no char): deixando matar`
+          : `filtro: so ${monsterLabel(fs.target)} (ignorado) ate ${SWAP_MAX_M} m: deixando matar`;
+        if (text !== filterKeepLog) log(text + ".");
+        filterKeepLog = text;
       }
     }
     const step = nextTrainStep(s, cfg, prog, now);
