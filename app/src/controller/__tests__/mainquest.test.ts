@@ -133,6 +133,28 @@ test("cacando sem progresso volta ao objetivo 2 vezes e depois desiste", () => {
   assert.match(st.kind === "fail" ? st.reason : "", /sem progresso cacando \(matar monstro 110001 1\/5\)/);
 });
 
+// Revisao do PR #84: o prazo da perna contava do inicio e derrubava caca longa que
+// seguia progredindo.
+test("caca longa com o step subindo passa de 15 min sem cair; sem progresso por 15 min cai", () => {
+  const r = runner();
+  const kill = (step: number) => snap({ quest: quest(1000005, TASK_TAKEN, [{ type: 3, id: 110001, step, max: 30 }]) });
+  r.p = { ...trackMainQuest(r.p, kill(0), 0), huntOff: true };
+  r.step(kill(0), 1000); // goto
+  r.step(kill(0), 2000); // chega
+  assert.equal((r.step(kill(0), 13000) as { id?: string }).id, "hunt");
+  // Um monstro a cada 2 min por 40 min: sempre esperando, nunca falha.
+  for (let k = 1; k <= 20; k++) {
+    const st = r.step(kill(k), 13000 + k * 120000);
+    assert.equal(st.kind, "wait", `step ${k} aos ${(k * 2)} min`);
+  }
+  // Mesma perna sem nenhum step subir ha 15 min: o prazo vale (antes do retorno ao objetivo).
+  const now = 20 * 60 * 1000;
+  const stale = { ...newMainQuestProgress(), key: "1000005:hunt", questId: 1000005, legAt: 1000, progressAt: 1000, huntOnAt: now - 1000 };
+  const st = nextMainQuestStep(kill(3), DEFAULT_MAIN_QUEST_CONFIG, stale, now);
+  assert.match(st.kind === "fail" ? st.reason : "", /sem progresso ha 15 min/);
+  assert.equal(nextMainQuestStep(kill(3), DEFAULT_MAIN_QUEST_CONFIG, { ...stale, progressAt: now - 60000 }, now).kind, "wait");
+});
+
 test("objetivo de caca com a caca pela missao desligada falha sem mexer na caca", () => {
   const st = nextMainQuestStep(snap({ quest: quest(1000005, TASK_TAKEN, [KILL(0)]) }), { ...DEFAULT_MAIN_QUEST_CONFIG, hunt: false }, newMainQuestProgress(), 0);
   assert.equal(st.kind, "fail");

@@ -128,7 +128,9 @@ export function newMainQuestProgress(): MainQuestProgress {
   };
 }
 
-// Perna sem mudar de status nesse tempo: desiste (o resto do bot segue).
+// Perna sem mudar e sem nenhum step subir nesse tempo: desiste (o resto do bot
+// segue). Conta do ultimo progresso: caca longa (matar 30, juntar 20) que segue
+// subindo nao cai por tempo.
 export const MQ_LEG_MAX_MS = 15 * 60 * 1000;
 // Cacando sem nenhum step subir nesse tempo: volta ao objetivo (DoTask de novo).
 export const MQ_HUNT_STALL_MS = 3 * 60 * 1000;
@@ -164,7 +166,8 @@ export function nextMainQuestStep(s: MainQuestSnapshot | null, cfg: MainQuestCon
   }
   if (s.level !== undefined && q.level > s.level) return { kind: "done", reason: `missao ${q.id} pede nivel ${q.level} (char ${s.level})` };
   const leg = questLeg(q);
-  if (p.legAt > 0 && now - p.legAt >= MQ_LEG_MAX_MS) return { kind: "fail", reason: `missao ${q.id} parada ha 15 min (${leg}: ${openConds(q)})` };
+  if (p.legAt > 0 && now - Math.max(p.legAt, p.progressAt) >= MQ_LEG_MAX_MS)
+    return { kind: "fail", reason: `missao ${q.id} sem progresso ha 15 min (${leg}: ${openConds(q)})` };
   if (leg === "hunt" && !cfg.hunt) return { kind: "fail", reason: `missao ${q.id} pede caca (${openConds(q)}) e a caca pela missao esta desligada` };
 
   // Cacando o objetivo: espera os steps subirem; parado demais, volta ao objetivo.
