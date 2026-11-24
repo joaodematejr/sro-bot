@@ -67,9 +67,11 @@ export interface MainQuestSnapshot extends TravelSnapshot {
   safeToLeave?: boolean; // fora de combate, HP alto e sem monstro perto
   quest: MainQuest | null;
   lineStatus?: number; // GetTaskStatue(TT_Main): 4 = linha principal acabou
-  // false = alguma leitura da lista ou da missao falhou: "sem missao" nao e confiavel
-  // (undefined conta como ok).
+  // false = falhou a contagem da lista ou uma leitura da main escolhida: "sem
+  // missao" nao e confiavel (undefined conta como ok).
   listOk?: boolean;
+  // IDs das entradas cujo TaskType nao se leu (-1 = nem o ID): puladas na busca.
+  unreadIds?: number[];
 }
 
 export type MainQuestLeg = "take" | "hunt" | "talk" | "other" | "finish" | "over";
@@ -121,13 +123,14 @@ export interface MainQuestProgress extends TravelProgress {
   progressAt: number; // ultima vez que um step subiu (ou inicio da perna)
   renavs: number; // voltas ao objetivo de caca sem progresso
   idleSince: number; // sem main quest aberta desde (0 = tem)
+  listBadSince: number; // leitura da lista incerta desde (0 = a ultima foi boa)
   completed: number[]; // missoes que sairam da lista nesta passada
 }
 
 export function newMainQuestProgress(): MainQuestProgress {
   return {
     ...newTravel(), key: "", questId: 0, legAt: 0, huntOff: false, huntOnAt: 0, unsafeSince: 0, defended: false,
-    opSent: 0, opAt: 0, steps: 0, progressAt: 0, renavs: 0, idleSince: 0, completed: [],
+    opSent: 0, opAt: 0, steps: 0, progressAt: 0, renavs: 0, idleSince: 0, listBadSince: 0, completed: [],
   };
 }
 
@@ -146,6 +149,18 @@ export const MQ_MAX_OPS = 3;
 export const MQ_OTHER_WAIT_MS = 2 * 60 * 1000;
 // A proxima missao aparece na lista logo depois da entrega: espera antes de concluir.
 export const MQ_NEXT_WAIT_MS = 8000;
+// Leitura da lista incerta seguida por esse tempo: desiste (o Treino e as outras
+// atividades nao ficam presos ate o fim da passada de 1 h).
+export const MQ_LIST_BAD_MAX_MS = 60 * 1000;
+
+// A leitura nao permite dizer se a missao saiu da lista: falhou a contagem ou a main
+// escolhida, ou a main que estava em andamento sumiu junto com uma entrada ilegivel
+// (que pode ser ela). Nesses casos nao conta entrega nem conclui.
+export function listUncertain(s: MainQuestSnapshot, p: MainQuestProgress): boolean {
+  if (s.listOk === false) return true;
+  if ((s.quest && s.quest.status !== TASK_OVER) || p.questId === 0) return false;
+  return (s.unreadIds ?? []).some((id) => id === p.questId || id < 0);
+}
 
 const TRAVEL: Record<"npc" | "obj", TravelLabels> = {
   npc: { dest: "o NPC da missao", at: "no NPC da missao", map: "o mapa da missao", toMap: "ao mapa da missao" },
@@ -158,8 +173,13 @@ export function nextMainQuestStep(s: MainQuestSnapshot | null, cfg: MainQuestCon
   if (s.dead) return { kind: "fail", reason: "char morto; missao principal fica pra depois" };
   if (p.defended) return { kind: "fail", reason: "atacado com HP baixo seguindo a missao; caca religada, missao principal fica pra depois" };
   if (mustDefend(p.huntOff, s.inCombat, s.hpPct)) return act("defend", "atacado com HP baixo seguindo a missao: religar a caca", JSON.stringify({ on: 1 }));
-  // Leitura falha nao vira "missao entregue" nem "linha concluida": espera a proxima.
-  if (s.listOk === false) return { kind: "wait", reason: "leitura da lista de missoes falhou; tentando de novo" };
+  // Leitura falha nao vira "missao entregue" nem "linha concluida": espera a proxima,
+  // ate MQ_LIST_BAD_MAX_MS seguidos.
+  if (listUncertain(s, p)) {
+    if (p.listBadSince > 0 && now - p.listBadSince >= MQ_LIST_BAD_MAX_MS)
+      return { kind: "fail", reason: "a leitura da lista de missoes falha ha 1 min; missao principal fica pra depois" };
+    return { kind: "wait", reason: "leitura da lista de missoes falhou; tentando de novo" };
+  }
   const done = p.completed.length;
   if (cfg.maxQuests > 0 && done >= cfg.maxQuests) return { kind: "done", reason: `${done} missao(oes) principal(is) entregue(s) (limite ${cfg.maxQuests})` };
   const q = s.quest;
@@ -221,7 +241,9 @@ export function nextMainQuestStep(s: MainQuestSnapshot | null, cfg: MainQuestCon
 // Muda de perna (missao nova, status novo ou objetivo cumprido): zera a viagem e
 // as tentativas. Missao que saiu da lista ou mudou de ID conta como entregue.
 export function trackMainQuest(p: MainQuestProgress, s: MainQuestSnapshot | null, now: number): MainQuestProgress {
-  if (!s || !s.inWorld || s.listOk === false) return p;
+  if (!s || !s.inWorld) return p;
+  if (listUncertain(s, p)) return p.listBadSince ? p : { ...p, listBadSince: now };
+  if (p.listBadSince) p = { ...p, listBadSince: 0 };
   const q = s.quest && s.quest.status !== TASK_OVER ? s.quest : null;
   if (p.questId > 0 && p.questId !== q?.id && !p.completed.includes(p.questId)) p = { ...p, completed: [...p.completed, p.questId] };
   if (!q) return { ...p, questId: 0, key: "", idleSince: p.idleSince || now };
@@ -275,8 +297,11 @@ export async function readMainQuestSnapshot(q: EngineQuery): Promise<MainQuestSn
   if (Array.isArray(player.corrected)) s.pos = player.corrected as number[];
   s.inCombat = player.inCombat === true;
   s.hpPct = hpPercent(player.hp, player.maxHp);
-  // Cada leitura que falha marca listOk = false (o num devolve -1).
+  // Leitura da contagem ou da main escolhida que falha marca listOk = false (o num
+  // devolve -1). O TaskType das outras entradas e tolerante: entrada que nao se le
+  // (ex.: m_TableData nulo numa missao fora da tabela) so e pulada e anotada.
   s.listOk = true;
+  s.unreadIds = [];
   const must = async (body: string) => {
     const v = await num(body);
     if (v < 0) s.listOk = false;
@@ -285,7 +310,9 @@ export async function readMainQuestSnapshot(q: EngineQuery): Promise<MainQuestSn
   const n = Math.min(await must(`${TASK_LIST} get_Count`), 32);
   for (let i = 0; i < n && !s.quest && s.listOk; i++) {
     const it = `${TASK_LIST} get_Item:${i}`;
-    if ((await must(`${it} m_TableData TaskType`)) !== TASK_TYPE_MAIN) continue;
+    const type = await num(`${it} m_TableData TaskType`);
+    if (type < 0) s.unreadIds.push(await num(`${it} m_ID`));
+    if (type !== TASK_TYPE_MAIN) continue;
     const id = await must(`${it} m_ID`);
     const status = await must(`${it} m_Status`);
     // Main ja fechada (Over) que ainda esta na lista: segue procurando a aberta.

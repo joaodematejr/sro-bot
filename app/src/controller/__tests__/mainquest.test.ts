@@ -10,6 +10,7 @@ import {
   type MainQuestSnapshot,
   type MainQuestStep,
   MQ_HUNT_STALL_MS,
+  MQ_LIST_BAD_MAX_MS,
   MQ_OP_RETRY_MS,
   newMainQuestProgress,
   nextMainQuestStep,
@@ -299,7 +300,7 @@ test("leitura: pula main com status 4 (Over) e pega a aberta seguinte", async ()
 test("leitura falha nao conta entrega nem conclui; leitura boa sem a missao conta", async () => {
   const L = "XTaskDocument get_TaskRecord m_TaskList";
   // Cada leitura que falha marca listOk = false e nao devolve missao.
-  for (const fail of [`${L} get_Count`, `${L} get_Item:1 m_TableData TaskType`, `${L} get_Item:1 m_ID`, `${L} get_Item:1 m_Status`, `${L} get_Item:1 m_Conditions get_Count`]) {
+  for (const fail of [`${L} get_Count`, `${L} get_Item:1 m_ID`, `${L} get_Item:1 m_Status`, `${L} get_Item:1 m_Conditions get_Count`]) {
     const s = await readMainQuestSnapshot(fakeList([[7, 2223, 1], [1, 1000005, TASK_TAKEN]], [fail]));
     assert.equal(s?.listOk, false, fail);
     assert.equal(s?.quest, null, fail);
@@ -323,4 +324,49 @@ test("leitura falha nao conta entrega nem conclui; leitura boa sem a missao cont
   const gone = r.step(snap({ quest: null, listOk: true }), 8000);
   assert.deepEqual(r.p.completed, [1000005]);
   assert.equal(gone.kind, "done");
+});
+
+// Revisao do PR #84 (159cceb): entrada de outro tipo que nao se le (m_TableData nulo)
+// derrubava a lista inteira e a main nunca era achada.
+test("leitura: TaskType ilegivel so pula a entrada (anotada) e acha a main seguinte", async () => {
+  const L = "XTaskDocument get_TaskRecord m_TaskList";
+  const s = await readMainQuestSnapshot(fakeList([[7, 2223, 1], [1, 1000005, TASK_TAKEN]], [`${L} get_Item:0 m_TableData TaskType`]));
+  assert.equal(s?.listOk, true);
+  assert.equal(s?.quest?.id, 1000005);
+  assert.deepEqual(s?.unreadIds, [2223]);
+  // A propria main ilegivel: nao e achada, fica anotada pelo ID.
+  const m = await readMainQuestSnapshot(fakeList([[1, 1000005, TASK_TAKEN]], [`${L} get_Item:0 m_TableData TaskType`]));
+  assert.equal(m?.quest, null);
+  assert.deepEqual(m?.unreadIds, [1000005]);
+});
+
+test("main em andamento com a entrada ilegivel nao conta entrega; outra entrada ilegivel nao atrapalha", () => {
+  const r = runner();
+  r.p = { ...trackMainQuest(r.p, snap({ quest: quest(1000005, TASK_TAKEN, [KILL(2)]) }), 0), huntOff: false, huntOnAt: 1 };
+  assert.equal(r.step(snap({ quest: null, unreadIds: [1000005] }), 1000).kind, "wait");
+  assert.deepEqual(r.p.completed, []);
+  assert.equal(r.step(snap({ quest: null, unreadIds: [-1] }), 2000).kind, "wait"); // nem o ID se leu
+  assert.deepEqual(r.p.completed, []);
+  // Entrada ilegivel de outra missao: a saida da 1000005 e confiavel e conta.
+  r.step(snap({ quest: null, unreadIds: [2223], lineStatus: TASK_OVER }), 3000);
+  assert.deepEqual(r.p.completed, [1000005]);
+});
+
+// Revisao do PR #84 (159cceb): o wait da leitura falha nao tinha limite e segurava o
+// Treino e as outras atividades ate o fim da passada (1 h).
+test("leitura falhando seguida desiste em 1 min; uma leitura boa no meio zera o prazo", () => {
+  const r = runner();
+  const bad = snap({ quest: null, listOk: false });
+  assert.equal(r.step(bad, 1000).kind, "wait");
+  assert.equal(r.p.listBadSince, 1000);
+  assert.equal(r.step(bad, 1000 + MQ_LIST_BAD_MAX_MS - 1).kind, "wait");
+  const st = r.step(bad, 1000 + MQ_LIST_BAD_MAX_MS);
+  assert.match(st.kind === "fail" ? st.reason : "", /falha ha 1 min/);
+  // Boa no meio: zera, e o prazo recomeca.
+  const g = runner();
+  g.step(bad, 1000);
+  g.step(snap({ quest: quest(1000005, TASK_CAN_TAKE) }), 30000);
+  assert.equal(g.p.listBadSince, 0);
+  assert.equal(g.step(bad, 50000).kind, "wait");
+  assert.equal(g.step(bad, 50000 + MQ_LIST_BAD_MAX_MS - 1).kind, "wait");
 });
