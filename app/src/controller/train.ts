@@ -1055,10 +1055,14 @@ export function shouldSeek(s: TrainSnapshot | null, p: TrainProgress, now: numbe
 
 // Inimigo vivo mais perto pra ir buscar: null com inimigo ja perto (o auto-play
 // cuida e desligar a caca ali e risco) ou sem nenhum vivo no raio do ponto.
+// So ate SEEK_SPOT_FRAC do raio: na borda o auto-play persegue o monstro pra fora
+// do raio e o Treino para a caca e volta andando (2026-11-24, 0.155.7: "longe do
+// ponto (215 m)" as 07:11, 07:48 e 07:52 no ponto 2, raio 200).
+export const SEEK_SPOT_FRAC = 0.8;
 export function pickSeekTarget(pos: [number, number, number], enemies: [number, number, number][], spot?: TrainSpot): [number, number, number] | null {
   const dist = (e: [number, number, number]) => Math.hypot(e[0] - pos[0], e[2] - pos[2]);
   if (enemies.some((e) => dist(e) < SEEK_CLEAR_M)) return null;
-  const range = spot ? (spot.range && spot.range > 0 ? spot.range : SPOT_LEAVE_M) : Infinity;
+  const range = spot ? (spot.range && spot.range > 0 ? spot.range : SPOT_LEAVE_M) * SEEK_SPOT_FRAC : Infinity;
   const ok = enemies
     .filter((e) => (spot ? Math.hypot(e[0] - spot.x, e[2] - spot.z) <= range : dist(e) <= SEEK_MAX_M))
     .sort((a, b) => dist(a) - dist(b));
