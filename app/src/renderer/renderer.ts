@@ -2400,12 +2400,26 @@ async function onActivityToggle(id: string): Promise<void> {
       if (polling && (await runFirmActivity())) markDone("act-firm");
     }
   } else if (id === "act-mainquest" && on) {
-    // Mesmo jeito da torre: pausa o loop do Treino, segue a missao e religa.
-    if (await waitInWorld()) {
+    // Pausa o loop do Treino, segue a missao e religa. Marca activitiesRunning e
+    // contBusy como as diarias: assim Guild Boss, Sekhmet, diarias e Continental nao
+    // entram junto (disputariam a caca e o char) e o checkTimedEvents para a missao
+    // quando um evento abre. Com outra atividade ja rodando (Iniciar bot no meio do
+    // Firm, por exemplo), nao roda junto: fica pro Iniciar bot.
+    if (!(await waitInWorld())) return;
+    if (activitiesRunning || contBusy || gbBusy || swBusy) {
+      log("Missao principal: outra atividade rodando agora; ela entra no proximo Iniciar bot.");
+      return;
+    }
+    activitiesRunning = true;
+    contBusy = true;
+    try {
       if (trainRunning) await stopTrainLoop();
       if (polling) await runMainQuestActivity();
-      if (polling && isChecked("act-train")) resumeTrainLater("da missao principal");
+    } finally {
+      activitiesRunning = false;
+      contBusy = false;
     }
+    if (polling && isChecked("act-train")) resumeTrainLater("da missao principal");
   } else if (id === "act-actchest" && on) {
     actChestNextAt = 0;
     void maybeRunActChests();
