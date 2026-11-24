@@ -974,3 +974,5 @@ auto-play ligado), so com comandos que o engine ja tem (GETP, ENTS, OBJV, FIND, 
 - Engine (filtro de monstros): `TARG <id>` faz essa troca sem o indice, achando o monstro pelo id na
   hora, e o ENTS passa a mandar o `_type_id` como 10o elemento. Tag propria porque um `SKIL` com corpo
   desconhecido, num engine antigo, cai no liga/desliga da caca pelos digitos do corpo.
+- Especie diferente com o mesmo nome: no mesmo ponto apareceu "Niya Mage" de 111700 de HP (o comum
+  tem 11170), que nao caiu no filtro do 310011. O nome nao separa especie; o `_type_id` e o HP maximo sim.
