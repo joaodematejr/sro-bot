@@ -6,6 +6,7 @@ import { activityExpLine, eventFromLog, type ExpPoint } from "../controller/hist
 import { unsignedExp } from "../controller/train";
 import { type Rage, ragePct, rageText } from "../controller/berserk";
 import { parseNames } from "../controller/party";
+import type { BuffTarget } from "../controller/team";
 import { bagLevel, bagStep, bagText, type BagWatch } from "../controller/bag";
 import { dueDailies, gameDay } from "../controller/daily";
 import { luckyMoneyWindow } from "../controller/freebies";
@@ -1491,6 +1492,7 @@ interface TrainUiConfig {
   team?: {
     join: boolean; sameMapOnly: boolean; lead?: boolean; openAutoJoin?: boolean; acceptRequests?: boolean;
     invite?: string[]; acceptFrom?: string[]; acceptFriendsGuild?: boolean; follow?: boolean;
+    buffTarget?: BuffTarget;
   };
   booster?: boolean;
   buffDamage?: boolean;
@@ -1515,6 +1517,11 @@ function intOf(id: string, d: number): number {
 
 function checked(id: string): boolean {
   return ($(id) as HTMLInputElement).checked;
+}
+
+// Alvo do buff de skill na party; vazio deixa a opcao do jogo como esta.
+function buffTargetOf(v: string): BuffTarget | undefined {
+  return v === "leader" || v === "member" || v === "self" ? v : undefined;
 }
 
 // Nomes de personagem separados por virgula (convite de time).
@@ -1545,6 +1552,7 @@ function readTrainUi(): TrainUiConfig {
       openAutoJoin: checked("tr-team-auto"), acceptRequests: checked("tr-team-req"),
       invite: nameList("tr-team-invite"), acceptFrom: nameList("tr-team-accept"),
       acceptFriendsGuild: checked("tr-team-accept-fg"), follow: checked("tr-team-follow"),
+      buffTarget: buffTargetOf(($("tr-team-buff") as HTMLSelectElement).value),
     },
     booster: checked("tr-booster"),
     buffDamage: checked("tr-buff-dano"),
@@ -1650,6 +1658,7 @@ function applyTrainUi(c: TrainUiConfig): void {
   ($("tr-team-accept") as HTMLInputElement).value = (c.team?.acceptFrom ?? []).join(", ");
   ($("tr-team-accept-fg") as HTMLInputElement).checked = !!c.team?.acceptFriendsGuild;
   ($("tr-team-follow") as HTMLInputElement).checked = !!c.team?.follow;
+  ($("tr-team-buff") as HTMLSelectElement).value = c.team?.buffTarget ?? "";
   ($("tr-booster") as HTMLInputElement).checked = !!c.booster;
   ($("tr-buff-dano") as HTMLInputElement).checked = !!c.buffDamage;
   ($("tr-buff-vip") as HTMLInputElement).checked = !!c.buffVip;
@@ -3202,7 +3211,7 @@ function wire(): void {
   applyTrainUi(loadTrainConfig());
   for (const id of ["tr-deaths", "tr-potions", "tr-sw-few", "tr-sw-min", "tr-sw-radius", "tr-sw-deaths-on", "tr-sw-deaths",
     "tr-stop-level-on", "tr-stop-level", "tr-stop-exp", "tr-stop-gold-on", "tr-stop-gold", "tr-home-on", "tr-team-on", "tr-team-same", "tr-team-lead", "tr-team-auto", "tr-team-req", "tr-team-invite", "tr-team-accept",
-    "tr-team-accept-fg", "tr-team-follow", "tr-sw-hp-on", "tr-sw-hp", "tr-booster", "tr-buff-dano", "tr-buff-vip", "tr-berserk", "tr-devil", "tr-skills", "tr-sell", "tr-players", "tr-revive-scroll"])
+    "tr-team-accept-fg", "tr-team-follow", "tr-team-buff", "tr-sw-hp-on", "tr-sw-hp", "tr-booster", "tr-buff-dano", "tr-buff-vip", "tr-berserk", "tr-devil", "tr-skills", "tr-sell", "tr-players", "tr-revive-scroll"])
     $(id).addEventListener("change", saveTrainConfig);
   // Entrar num time aberto e criar um time sao um ou outro.
   $("tr-team-on").addEventListener("change", () => {

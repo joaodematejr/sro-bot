@@ -115,6 +115,11 @@ Depois, nos dois:
      - **Sem time, entrar num time aberto**: o bot entra sozinho no time com mais
        gente (bônus de 5% com 2 membros até 25% com 6). Se ficar sozinho num
        time, ele sai e procura outro. Vem ligado;
+     - **Buff de skill na party**: escolha quem o auto-play do jogo buffa
+       primeiro: **o líder**, **os membros** ou **o próprio char**. É a opção do
+       próprio jogo; o Treino grava ao começar e devolve o valor antigo ao parar.
+       As skills de buff precisam estar na barra de skills. "Como está no jogo"
+       (padrão) não mexe em nada;
      - **Itens de buff**: caçando no ponto, o bot ativa da mochila, um de cada
        vez e quando o anterior acaba: **Exp Booster** (200% de 1 h primeiro),
        **pergaminho de dano 20%** (30 min) e **VIP Scroll +40 STR/INT** (1 h).

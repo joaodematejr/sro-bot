@@ -19,7 +19,7 @@ reconhecimento de imagem.
   salvo. Vários pontos com raio e canal, troca de ponto por mortes, poucos
   monstros ou HP baixo, ponto de reserva quando falta o training time x10,
   troca de canal quando outro jogador caça perto, time automático pelo bônus de
-  EXP, Exp Booster e buffs, Berserk e devil, subida de maestrias e skills no
+  EXP, alvo do buff de skill na party, Exp Booster e buffs, Berserk e devil, subida de maestrias e skills no
   level-up, venda do lixo com a mochila cheia, parada por nível, gold ou mortes.
 - **Diárias**: Demon Locking Tower, Continental Exploration, Firm (tarefa diária
   da guilda, com entrega e prêmio total), Guild utilities (sign-in, baús e

@@ -32,6 +32,9 @@ import {
   OPT,
   optionFixes,
   optionRestores,
+  BUFF_TARGET_VALUE,
+  TRAIN_OPTIONS,
+  trainOptions,
   pickPotion,
   RESET_BORN_BODY,
   REVIVE_BACK_CITY,
@@ -282,6 +285,28 @@ test("opcoes: ao parar devolve so o que mudou, com o valor original", () => {
     "callsi XOptionsDocument SetValue 3 4039 0 1",
   ]);
   assert.deepEqual(optionRestores(optionFixes({ ...cur, [OPT.RevivePlace]: 2, [OPT.ReturnFarming]: 1 })), []);
+});
+
+test("buff na party: alvo do buff do auto-play (4040) so entra quando escolhido e volta ao parar", () => {
+  // Sem escolha (ou time sem campo) o Treino nao mexe na opcao do jogo.
+  assert.equal(trainOptions(undefined), TRAIN_OPTIONS);
+  assert.equal(trainOptions({ join: true, sameMapOnly: false }), TRAIN_OPTIONS);
+  // Valor fora da lista (config velha ou mexida a mao) tambem nao.
+  assert.equal(trainOptions({ join: true, sameMapOnly: false, buffTarget: "x" as never }), TRAIN_OPTIONS);
+  // Enum PriorityBuffType do jogo: 0 Leader, 1 Member, 2 Self.
+  assert.deepEqual(BUFF_TARGET_VALUE, { leader: 0, member: 1, self: 2 });
+  const opts = trainOptions({ join: false, sameMapOnly: false, buffTarget: "leader" });
+  assert.equal(opts.length, TRAIN_OPTIONS.length + 1);
+  assert.deepEqual(opts[opts.length - 1], { id: OPT.PriorBuffTarget, name: "buff de skill primeiro no lider", value: 0 });
+  // Lido ao vivo no char principal: 4040 = 1 (Member). Pedindo o lider, manda 0 e devolve 1.
+  const cur = { [OPT.AutoHeal]: 1, [OPT.AutoBuy]: 1, [OPT.AutoPickUp]: 1, [OPT.AutoRevive]: 1,
+    [OPT.RevivePlace]: 2, [OPT.ReturnFarming]: 1, [OPT.AutoDemonizate]: 1, [OPT.PriorBuffTarget]: 1 };
+  const fixes = optionFixes(cur, opts);
+  assert.deepEqual(fixes.map((f) => f.body), ["callsi XOptionsDocument SetValue 3 4040 0 1"]);
+  assert.deepEqual(optionRestores(fixes), ["callsi XOptionsDocument SetValue 3 4040 1 1"]);
+  // Ja no valor pedido, ou nao lido: nada a mandar.
+  assert.deepEqual(optionFixes(cur, trainOptions({ join: false, sameMapOnly: false, buffTarget: "member" })), []);
+  assert.deepEqual(optionFixes({ ...cur, [OPT.PriorBuffTarget]: undefined }, opts), []);
 });
 
 test("ponto inalcancavel: depois de 8 viagens sem chegar pula pro proximo (ou para com um so)", () => {
