@@ -127,6 +127,36 @@ test("filtro: ignorado escolhido de novo depois que o substituto morreu nao e in
   assert.deepEqual(m.giveUp, {});
 });
 
+test("filtro: dois ignorados batendo no char ao mesmo tempo (A, B, A, B) caem no insiste", () => {
+  // Revisao do PR #86: com so a ultima troca guardada, A e B se alternavam e a
+  // insistencia nunca fechava. Mage 10 (A) e 11 (B); substitutos Shaman 20 e 21 vivos.
+  const ents = [ent(10, 3, 0), ent(11, 4, 0), ent(20, 10, 0, { typeId: SHAMAN }), ent(21, 12, 0, { typeId: SHAMAN })];
+  let m = newFilterMemory();
+  let now = 0;
+  const turn = (target: number) => {
+    now += PENDING_MS + 100;
+    return monsterFilterStep(snap(target, ents), noMage, m, now);
+  };
+  // Primeira vez de cada: troca sem contar.
+  for (const [id, to] of [[10, 20], [11, 21]] as const) {
+    const st = turn(id);
+    assert.ok(st.kind === "swap" && !st.bounce, `1a vez ${id}`);
+    m = afterSwap(m, id, to, false, now);
+  }
+  // Voltas com o substituto vivo, alternando: na INSIST_MAX-esima de cada, desiste.
+  for (let round = 0; round < 2; round++) {
+    for (const [id, to] of [[10, 20], [11, 21]] as const) {
+      const st = turn(id);
+      assert.ok(st.kind === "swap" && st.bounce, `volta ${round + 1} de ${id}`);
+      m = afterSwap(m, id, to, true, now);
+    }
+  }
+  for (const id of [10, 11]) {
+    const st = turn(id);
+    assert.deepEqual(st.kind === "keep" && st.why, "insiste", `insiste ${id}`);
+  }
+});
+
 test("filtro: troca mandada espera o jogo aplicar antes de tentar de novo", () => {
   const s = snap(10, [ent(10, 3, 0), ent(12, 10, 0, { typeId: SHAMAN })]);
   const m = afterSwap(newFilterMemory(), 10, 12, false, 1000);

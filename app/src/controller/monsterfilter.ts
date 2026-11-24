@@ -54,11 +54,14 @@ export interface FilterMemory {
   bounces: Record<number, number[]>; // id do ignorado -> quando voltou com o substituto vivo
   giveUp: Record<number, number>; // id -> ate quando deixa lutar
   pending?: { from: number; until: number }; // troca mandada, ainda nao aplicada
-  last?: { from: number; to: number }; // ultima troca (de quem pra quem)
+  // Substituto da ultima troca de CADA ignorado (id -> pra quem foi e quando). Por
+  // ignorado e nao so a ultima troca: com dois batendo no char (A, B, A, B) a
+  // ultima troca seria sempre do outro e a insistencia nunca fecharia.
+  lastTo: Record<number, { to: number; at: number }>;
 }
 
 export function newFilterMemory(): FilterMemory {
-  return { bounces: {}, giveUp: {} };
+  return { bounces: {}, giveUp: {}, lastTo: {} };
 }
 
 export type FilterStep =
@@ -109,8 +112,8 @@ export function monsterFilterStep(
     if (d <= maxM && d < bestD) { best = e; bestD = d; }
   }
   if (!best) return { kind: "keep", target: t, why: "sem-permitido" };
-  const last = mem.last;
-  const bounce = !!last && last.from === t.id && snap.ents.some((e) => e.id === last.to && alive(e));
+  const prev = mem.lastTo[t.id];
+  const bounce = !!prev && snap.ents.some((e) => e.id === prev.to && alive(e));
   return { kind: "swap", from: t, to: best, dist: bestD, bounce };
 }
 
@@ -134,7 +137,10 @@ export function afterSwap(mem: FilterMemory, fromId: number, toId: number, bounc
       bounces[fromId] = mine;
     }
   }
-  return { bounces, giveUp, pending: { from: fromId, until: now + PENDING_MS }, last: { from: fromId, to: toId } };
+  const lastTo: Record<number, { to: number; at: number }> = {};
+  for (const [k, v] of Object.entries(mem.lastTo)) if (now - v.at < INSIST_WINDOW_MS) lastTo[Number(k)] = v;
+  lastTo[fromId] = { to: toId, at: now };
+  return { bounces, giveUp, pending: { from: fromId, until: now + PENDING_MS }, lastTo };
 }
 
 // Resposta do TARG: "ok" trocou; "old-engine" = engine sem a tag (tag desconhecida
