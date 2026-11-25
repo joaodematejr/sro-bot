@@ -9,6 +9,7 @@ import { parseNames } from "../controller/party";
 import type { BuffTarget } from "../controller/team";
 import { bagLevel, bagStep, bagText, type BagWatch } from "../controller/bag";
 import { dueDailies, gameDay } from "../controller/daily";
+import { EVENT_GATE_MAX_MS, type EventGate, eventHolding, nextEventGate, NO_EVENT } from "../controller/eventgate";
 import { luckyMoneyWindow } from "../controller/freebies";
 import { QIGONG_REQUEST_EVERY_MS } from "../controller/qigong";
 import { CATEGORY_LABEL, type IgnoredSpecies, type MonsterCategory, type MonsterFilterConfig, nearbySpecies } from "../controller/monsterfilter";
@@ -1180,15 +1181,36 @@ async function resumeTrainAfterGuildBoss(): Promise<void> {
 // Guild Boss e Sekhmet War tem hora marcada e duram 20 a 30 min: abertos, param o
 // que estiver rodando (Continental, diarias, Album de Cards) e seguram a fila ate
 // o bot entrar. Em 2026-11-23 a Sekhmet abriu 09:30 e o bot so tentou 09:44.
-let eventOpen = "";
+// Le mesmo com o Guild Boss ou a Sekhmet no meio da propria checagem (so leitura):
+// em 2026-11-24 sair nesses ticks deixou o portao preso em "Sekhmet War" e a fila
+// parada ate reabrir o app (ver controller/eventgate.ts).
+let eventGate: EventGate = NO_EVENT;
+let eventCheckBusy = false;
+let eventExpiredLogged = "";
+const eventOpen = (): string => eventHolding(eventGate, Date.now());
 async function checkTimedEvents(): Promise<void> {
-  if (!polling || watchdogBusy || loggingIn || outOfWorldSince !== 0 || gbBusy || swBusy) return;
+  if (!polling || watchdogBusy || loggingIn || outOfWorldSince !== 0 || eventCheckBusy) return;
+  eventCheckBusy = true;
+  try {
+    await checkTimedEventsInner();
+  } finally {
+    eventCheckBusy = false;
+  }
+}
+
+async function checkTimedEventsInner(): Promise<void> {
   let open = "";
   if (isChecked("act-guildboss") && (await window.sro.guildBossOpen().catch(() => false))) open = "Guild Boss";
   else if (isChecked("act-sekhmet") && activitiesDone()["act-sekhmet"] !== gameDay() && (await window.sro.sekhmetOpen().catch(() => false))) open = "Sekhmet War";
-  const was = eventOpen;
-  eventOpen = open;
-  if (!open || !(activitiesRunning || contBusy)) return;
+  const was = eventGate.name;
+  eventGate = nextEventGate(eventGate, open, Date.now());
+  const held = eventOpen();
+  if (open && !held) {
+    const key = `${eventGate.name}:${eventGate.since}`;
+    if (eventExpiredLogged !== key) log(`${open} segue aberto na leitura ha ${Math.round(EVENT_GATE_MAX_MS / 60000)} min: liberando a fila de atividades.`);
+    eventExpiredLogged = key;
+  }
+  if (!held || !(activitiesRunning || contBusy)) return;
   if (was !== open) log(`${open} aberto: parando a atividade em andamento pra entrar.`);
   const stops = [window.sro.stopContinental, window.sro.stopCardAlbum, window.sro.stopFirm, window.sro.stopMainQuest, window.sro.stopTower, window.sro.stopGuild];
   await Promise.all(stops.map((f) => f().catch(() => undefined)));
@@ -1197,7 +1219,7 @@ async function checkTimedEvents(): Promise<void> {
 // Passada de 1 min: cada atividade roda mesmo se a anterior falhar (antes um erro
 // numa delas pulava o resto da fila).
 async function runScheduled(): Promise<void> {
-  if (eventOpen) return;
+  if (eventOpen()) return;
   const steps: [string, () => Promise<void>][] = [
     ["diarias", maybeRunDailies],
     ["Continental", maybeRunContinental],
@@ -2345,7 +2367,7 @@ async function runOncePerDay(id: string, label: string, fn: () => Promise<boolea
 let dailyDay = 0; // 0 para checar diarias pendentes no primeiro ciclo
 async function maybeRunDailies(): Promise<void> {
   const day = gameDay();
-  if (!polling || eventOpen || activitiesRunning || contBusy || watchdogBusy || loggingIn) return;
+  if (!polling || eventOpen() || activitiesRunning || contBusy || watchdogBusy || loggingIn) return;
   let retry = false;
   if (day !== dailyDay) {
     dailyDay = day;
