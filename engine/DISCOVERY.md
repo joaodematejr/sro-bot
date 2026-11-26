@@ -979,8 +979,9 @@ auto-play ligado), so com comandos que o engine ja tem (GETP, ENTS, OBJV, FIND, 
 
 ## Sair de cena, relogio do servidor e canal na mao (2026-11-26)
 
-- Tudo reaproveita chamadas ja usadas; nada novo lido ao vivo nesta data (o jogo
-  estava fora do mundo: `CONN` vazio).
+- Tudo reaproveita chamadas ja usadas; nada mandado ao jogo nesta data (o char
+  principal estava cacando na cena 100003). O engine manda um quadro `OKAY {}` ao
+  conectar: cliente de teste que para no primeiro quadro le isso como resposta vazia.
 - Sair da cena: `calls XScene ReqLeaveScene 0` (o botao de sair da cena; o Qigong ja
   usa no Guild Hall). Instancia = cena abaixo de 100000 (`WORLD_SCENE_MIN`, mundo
   aberto comeca em 100001) ou torre (`XScene _scene_type` 16, cena 102000 + andar,
