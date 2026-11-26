@@ -143,6 +143,22 @@ Depois, nos dois:
 5. Para encerrar, clique em **Parar bot** e depois em **Fechar jogo**. O "Fechar
    jogo" devolve o jogo exatamente como estava antes do bot.
 
+Na aba **Mapa**, embaixo do nome do mapa, fica uma faixa com:
+
+- **Servidor**: a hora do servidor do jogo e quanto falta pro dia do jogo virar
+  (05:00 do servidor, 18:00 em Brasília), quando as diárias e a presença
+  recomeçam.
+- **Canal**: os canais do mapa com a lotação (bom, lotado, cheio) e o Activity
+  Channel. O atual fica em dourado; clique em outro para trocar. O jogo só
+  troca fora de combate: desligue a caça e espere uns 6 s. Canal cheio não dá.
+- **Sair da cena**: aparece só dentro de instância (Guild Hall, arena, torre,
+  dungeon). Pede confirmação e usa o mesmo botão de sair do jogo; o char volta
+  pro mundo aberto.
+
+Troca de canal e saída só acontecem no clique e ficam bloqueadas com o Treino
+ou outra atividade rodando (elas escolhem canal e cena sozinhas). O log mostra o
+resultado ou o motivo da recusa.
+
 ## 6. O que o bot nunca faz
 
 - Não gasta Silk nem compra nada pago (Special Chest, "Open now", reviver
