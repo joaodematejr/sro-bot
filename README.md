@@ -32,7 +32,8 @@ reconhecimento de imagem.
 - **Sessão**: auto-login (inclusive na tela nativa do SDK, com a senha guardada
   criptografada pelo Windows), reconexão, vigia de jogo congelado, atualização
   do jogo, VPN opcional (WireGuard + WARP) para rotas ruins.
-- **Painel**: estado ao vivo, estatísticas, histórico em SQLite com EXP/h por
+- **Painel**: estado ao vivo, estatísticas, mapa ao vivo com relógio do
+  servidor, troca de canal e saída de cena na mão, histórico em SQLite com EXP/h por
   área e um assistente de IA opcional (Ollama, Gemini, OpenRouter, Groq ou
   Mistral) que lê o estado real do bot.
 

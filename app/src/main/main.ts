@@ -48,6 +48,16 @@ import { runActChests } from "./actchest";
 import { runFreebies } from "./freebies";
 import { runGuildHallCheck, runQigongAccept, runQigongRequest, setQigongDir, setQigongObjvReader } from "./qigong";
 import { pauseTrain, runTrain, stopTrain } from "./train";
+import {
+  channelBody,
+  channelChangeCheck,
+  LEAVE_SCENE_BODY,
+  leaveSceneCheck,
+  readFighting,
+  readWorld,
+  WORLD_CHANGE_MAX_MS,
+  type WorldActionState,
+} from "../controller/world";
 import { gameIps, pingIp, setVpnDir, vpnDisable, vpnEnable, vpnHealth, vpnStatus } from "./vpn";
 import { hasCredentials, saveCredentials, setCredentialsDir } from "./credentials";
 import { alertTelegram, hasTelegramToken, linkTelegram, loadTelegram, saveTelegram, setTelegramDir, type TelegramSettings, testTelegram } from "./telegram";
@@ -241,6 +251,65 @@ ipcMain.handle("engine:chatsend", async (_e, key: string, text: string, to?: str
   if (r.ok !== true) return { ok: false, erro: typeof r.erro === "string" ? r.erro : "engine sem o comando de chat (abra o jogo de novo pelo app)" };
   chatSentAt.set(key, Date.now());
   return { ok: true };
+});
+
+// Aba Mapa: relogio do servidor, canais do mapa e sair da cena. Leitura com a aba
+// aberta; troca de canal e saida so pelo botao, uma por vez, conferidas aqui de
+// novo (o renderer manda o nome da atividade que estiver rodando).
+let worldActing = false;
+const worldQ = (tag: string, body: string) => sendCommand("127.0.0.1", HOST_PORT, tag, body);
+
+async function worldState(busy: string | undefined): Promise<WorldActionState> {
+  const p = await queryPlayer("127.0.0.1", HOST_PORT).catch(() => null);
+  const inWorld = !!p && p.ok === true;
+  const st = (p ?? {}) as { inCombat?: unknown; dead?: unknown };
+  const running = trainRunning ? "Treino" : busy || undefined;
+  const fighting = inWorld && (st.inCombat === true || (await readFighting(worldQ)));
+  return { inWorld, dead: inWorld && st.dead === true, inCombat: fighting, busy: running };
+}
+
+async function waitWorld(done: () => Promise<boolean>): Promise<boolean> {
+  const t0 = Date.now();
+  while (Date.now() - t0 < WORLD_CHANGE_MAX_MS) {
+    await new Promise((r) => setTimeout(r, 1000));
+    if (await done().catch(() => false)) return true;
+  }
+  return false;
+}
+
+ipcMain.handle("engine:world", async () => readWorld(worldQ));
+
+ipcMain.handle("engine:worldchannel", async (_e, target: number, busy?: string) => {
+  if (worldActing) return { ok: false, erro: "outra troca em andamento" };
+  worldActing = true;
+  try {
+    const w = await readWorld(worldQ);
+    const c = channelChangeCheck(w.channels, Number(target), await worldState(busy));
+    if (!c.ok) return c;
+    await worldQ("SKIL", channelBody(c.line));
+    const ok = await waitWorld(async () => (await worldQ("GETP", "ChannelDocument get_CurrentLineID")).int === c.line);
+    return ok ? { ok: true } : { ok: false, erro: `o jogo nao trocou pro canal ${target} em ${WORLD_CHANGE_MAX_MS / 1000} s` };
+  } finally {
+    worldActing = false;
+  }
+});
+
+ipcMain.handle("engine:worldleave", async (_e, busy?: string) => {
+  if (worldActing) return { ok: false, erro: "outra troca em andamento" };
+  worldActing = true;
+  try {
+    const w = await readWorld(worldQ);
+    const erro = leaveSceneCheck(w.scene, w.sceneType, await worldState(busy));
+    if (erro) return { ok: false, erro };
+    await worldQ("SKIL", LEAVE_SCENE_BODY);
+    const ok = await waitWorld(async () => {
+      const s = (await worldQ("GETP", "XScene get_SceneID")).int;
+      return typeof s === "number" && s > 0 && s !== w.scene;
+    });
+    return ok ? { ok: true } : { ok: false, erro: `o char nao saiu da cena em ${WORLD_CHANGE_MAX_MS / 1000} s` };
+  } finally {
+    worldActing = false;
+  }
 });
 
 // Buffs ativos do char (BUFS), com o nome traduzido pelo jogo e guardado. Engine

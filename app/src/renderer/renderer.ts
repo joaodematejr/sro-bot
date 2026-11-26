@@ -21,6 +21,7 @@ import { pathAhead } from "../controller/map";
 import type { NavMap } from "../controller/navmesh";
 import { buffLabel, buffLeftText, type CharBuff, killStep } from "../controller/charstatus";
 import { clearsNotice, nextNotice, noticeFromLog, type StopNotice } from "../controller/stopnotice";
+import { canLeaveScene, durationText, lineStateText, msToDayReset, serverClock, type WorldSnapshot } from "../controller/world";
 
 interface TgSettings {
   enabled: boolean;
@@ -72,6 +73,9 @@ declare global {
       buffs: () => Promise<CharBuff[] | null>;
       navmesh: (scene: number) => Promise<NavMap | null>;
       chatSend: (key: string, text: string, to?: string) => Promise<{ ok: boolean; erro?: string }>;
+      world: () => Promise<WorldSnapshot>;
+      worldChannel: (channel: number, busy?: string) => Promise<{ ok: boolean; erro?: string }>;
+      worldLeave: (busy?: string) => Promise<{ ok: boolean; erro?: string }>;
       inject: () => Promise<{ ok: boolean; erro?: string }>;
       restore: () => Promise<{ ok: boolean; erro?: string }>;
       gameForeground: () => Promise<boolean>;
@@ -3859,6 +3863,117 @@ function setupMap(): void {
   $("map-zoom-out").addEventListener("click", () => zoom(-1));
   window.addEventListener("resize", () => mapVisible() && drawMap(mapLast));
   setInterval(() => void mapTick(), 250);
+  $("world-leave").addEventListener("click", () => void leaveSceneClick());
+  setInterval(() => void worldTick(), 1000);
+}
+
+// ---- Relogio do servidor, canal e sair da cena (aba Mapa) ----
+// Le cena, fuso e canais a cada 10 s com a aba aberta e o jogo conectado; o
+// relogio anda aqui a cada 1 s. Troca de canal e saida so pelo clique: o main
+// confere de novo (combate, morto, atividade rodando) antes de mandar.
+const WORLD_EVERY_MS = 10000;
+let worldLast: WorldSnapshot | null = null;
+let worldNextAt = 0;
+let worldBusy = false;
+let worldActing = false;
+
+// Atividade do bot que leva o char ou escolhe o canal: com ela rodando, nada na mao.
+function worldBusyName(): string | undefined {
+  if (trainRunning) return "Treino";
+  if (gbBusy) return "Guild Boss";
+  if (swBusy) return "Sekhmet War";
+  if (mqBusy) return "Missao principal";
+  if (dailyBusy) return "Diaria (Tower, Guild ou Firm)";
+  if (contBusy) return "Continental";
+  if (qigongBusy) return "Qigong";
+  if (watchdogBusy) return "Vigia";
+  return undefined;
+}
+
+function worldMsg(text: string, bad = false): void {
+  const el = $("world-msg");
+  el.textContent = text;
+  el.className = bad ? "text-danger" : "text-muted";
+}
+
+function drawWorld(): void {
+  const w = worldLast;
+  const tz = w?.tz ?? 8;
+  const c = serverClock(Date.now(), tz);
+  $("world-clock").textContent = `${c.time} ${c.zone}`;
+  $("world-reset").textContent = `dia vira em ${durationText(msToDayReset(Date.now(), tz))}`;
+  const box = $("world-channels");
+  const leave = $("world-leave") as HTMLButtonElement;
+  leave.classList.toggle("hidden", !w || !canLeaveScene(w.scene, w.sceneType));
+  leave.disabled = worldActing;
+  if (!w || !w.channels.length) {
+    const txt = !w ? "sem leitura" : w.scene > 0 && canLeaveScene(w.scene, w.sceneType) ? "instancia (sem canal)" : "sem leitura";
+    if (box.dataset.key !== txt) box.innerHTML = `<span class="text-muted">${txt}</span>`;
+    box.dataset.key = txt;
+    return;
+  }
+  const key = JSON.stringify([worldActing, w.channels]);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.innerHTML = "";
+  for (const r of w.channels) {
+    const b = document.createElement("button");
+    const st = lineStateText(r.state);
+    b.className = r.current ? "btn btn-gold px-2 py-0.5 text-xs" : "btn px-2 py-0.5 text-xs";
+    b.textContent = `${r.channel}${st ? ` · ${st}` : ""}${r.activity ? " · activity" : ""}`;
+    b.title = r.current ? "canal atual" : r.state === 1 ? "canal cheio" : `trocar pro canal ${r.channel}`;
+    b.disabled = worldActing || r.current || r.state === 1;
+    b.addEventListener("click", () => void changeChannelClick(r.channel));
+    box.appendChild(b);
+  }
+}
+
+async function worldTick(): Promise<void> {
+  if (!mapVisible()) return;
+  drawWorld();
+  if (!gameOpen || worldBusy || worldActing || Date.now() < worldNextAt) return;
+  worldBusy = true;
+  try {
+    worldLast = await window.sro.world();
+    worldNextAt = Date.now() + WORLD_EVERY_MS;
+  } catch {
+    worldNextAt = Date.now() + 4000;
+  } finally {
+    worldBusy = false;
+  }
+  drawWorld();
+}
+
+async function worldAction(start: string, run: () => Promise<{ ok: boolean; erro?: string }>, done: string): Promise<void> {
+  if (worldActing) return;
+  worldActing = true;
+  worldMsg(start);
+  drawWorld();
+  try {
+    const r = await run();
+    if (r.ok) {
+      worldMsg(done);
+      log(done);
+    } else {
+      worldMsg(r.erro ?? "falhou", true);
+      log(`${start.replace(/\.\.\.$/, "")}: ${r.erro ?? "falhou"}`);
+    }
+  } catch (e) {
+    worldMsg(String(e), true);
+  } finally {
+    worldActing = false;
+    worldNextAt = 0;
+    drawWorld();
+  }
+}
+
+async function changeChannelClick(channel: number): Promise<void> {
+  await worldAction(`trocando pro canal ${channel}...`, () => window.sro.worldChannel(channel, worldBusyName()), `canal trocado pro ${channel} (na mao).`);
+}
+
+async function leaveSceneClick(): Promise<void> {
+  if (!confirm("Sair da cena atual? O char volta pro mundo aberto.")) return;
+  await worldAction("saindo da cena...", () => window.sro.worldLeave(worldBusyName()), "char saiu da cena (na mao).");
 }
 
 // ---- Buffs ativos (aba Status) ----

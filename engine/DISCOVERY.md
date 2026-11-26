@@ -976,3 +976,19 @@ auto-play ligado), so com comandos que o engine ja tem (GETP, ENTS, OBJV, FIND, 
   desconhecido, num engine antigo, cai no liga/desliga da caca pelos digitos do corpo.
 - Especie diferente com o mesmo nome: no mesmo ponto apareceu "Niya Mage" de 111700 de HP (o comum
   tem 11170), que nao caiu no filtro do 310011. O nome nao separa especie; o `_type_id` e o HP maximo sim.
+
+## Sair de cena, relogio do servidor e canal na mao (2026-11-26)
+
+- Tudo reaproveita chamadas ja usadas; nada novo lido ao vivo nesta data (o jogo
+  estava fora do mundo: `CONN` vazio).
+- Sair da cena: `calls XScene ReqLeaveScene 0` (o botao de sair da cena; o Qigong ja
+  usa no Guild Hall). Instancia = cena abaixo de 100000 (`WORLD_SCENE_MIN`, mundo
+  aberto comeca em 100001) ou torre (`XScene _scene_type` 16, cena 102000 + andar,
+  acima do limite). Na torre e na arena da Sekhmet a saida por esse metodo segue sem
+  prova ao vivo.
+- Relogio: hora do aparelho + `XServerTimeMgr get_ServerTimeZone` (8). O dia do jogo
+  vira as 05:00 do servidor (21:00 UTC).
+- Canal na mao: mesma lista do Treino (`RequestSceneLineInfo`, `_listLine`) e
+  `ReqChangeLine`. Recusado com `XLevelStatistics get_IsInFightingState` verdadeiro
+  (o jogo ignora a troca em combate). Em instancia a lista nao e lida (fica a do
+  ultimo mapa aberto).
