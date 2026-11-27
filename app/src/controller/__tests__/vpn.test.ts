@@ -13,6 +13,7 @@ import {
   parseServiceState,
   probeIp,
   seedIps,
+  tunnelGame,
   tunnelIps,
 } from "../vpn";
 
@@ -120,14 +121,42 @@ test("IP do ping e do check do tunel: sempre da versao escolhida e nunca o cente
   assert.equal(probeIp("global", ["13.250.144.245", "18.140.1.2"]), "18.140.1.2");
   // Europa sem jogo conectado: nenhum IP (nunca cai num IP da Global).
   assert.equal(probeIp("eu", []), undefined);
-  assert.equal(probeIp("eu", [], ["13.250.144.245", "54.169.246.199"]), undefined);
+  assert.equal(probeIp("eu", [], { inTunnel: ["13.250.144.245", "54.169.246.199"] }), undefined);
   // Europa conectada: o IP que o jogo usa.
   assert.equal(probeIp("eu", ["3.120.0.10"]), "3.120.0.10");
   // Check do tunel: so IP que esta no tunel (fora dele o ping vai direto).
-  assert.equal(probeIp("eu", ["3.120.0.10"], ["54.169.246.199"]), undefined);
-  assert.equal(probeIp("eu", ["3.120.0.10", "3.120.0.11"], ["3.120.0.11"]), "3.120.0.11");
+  assert.equal(probeIp("eu", ["3.120.0.10"], { inTunnel: ["54.169.246.199"] }), undefined);
+  assert.equal(probeIp("eu", ["3.120.0.10", "3.120.0.11"], { inTunnel: ["3.120.0.11"] }), "3.120.0.11");
   // Global com o servidor fixo fora do tunel (ex.: tunel montado na Europa).
-  assert.equal(probeIp("global", [], ["3.120.0.10"]), undefined);
-  assert.equal(probeIp("global", ["18.140.1.2"], ["13.250.144.245", "54.169.246.199"]), "54.169.246.199");
+  assert.equal(probeIp("global", [], { inTunnel: ["3.120.0.10"] }), undefined);
+  assert.equal(probeIp("global", ["18.140.1.2"], { inTunnel: ["13.250.144.245", "54.169.246.199"] }), "54.169.246.199");
   assert.match(noProbeText("eu"), /sem IP do servidor da Europa/);
+});
+
+test("tunel mudo na Europa: o check acha IP mesmo sem conexao viva do jogo", () => {
+  // Achado da revisao (2026-11-27): com o WARP mudo a conexao do jogo cai (SYN_SENT,
+  // fora do seen) e a Europa nao tem IP fixo. O tunel montado pela Europa so tem IP dela.
+  const tun = ["3.120.0.10", "3.120.0.11"];
+  assert.equal(probeIp("eu", [], { inTunnel: tun, tunnelGame: "eu" }), "3.120.0.10");
+  // O ultimo IP vivo visto vem antes dos outros do tunel.
+  assert.equal(probeIp("eu", [], { inTunnel: tun, tunnelGame: "eu", last: "3.120.0.11" }), "3.120.0.11");
+  // Ultimo IP que saiu do tunel nao vale.
+  assert.equal(probeIp("eu", [], { inTunnel: ["3.120.0.10"], tunnelGame: "eu", last: "3.120.0.11" }), "3.120.0.10");
+  // Conexao viva continua primeiro.
+  assert.equal(probeIp("eu", ["3.120.0.11"], { inTunnel: tun, tunnelGame: "eu", last: "3.120.0.10" }), "3.120.0.11");
+  // Tunel montado pela Global (ou conf antigo, sem marca): nunca testa a Europa por ele.
+  assert.equal(probeIp("eu", [], { inTunnel: ["13.250.144.245", "54.169.246.199"], tunnelGame: "global" }), undefined);
+  assert.equal(probeIp("eu", [], { inTunnel: ["18.140.1.2"] }), undefined);
+  // Global com o fixo fora do tunel marcado: cai num IP do tunel dela, nunca no center.
+  assert.equal(probeIp("global", [], { inTunnel: ["13.250.144.245", "18.140.1.2"], tunnelGame: "global" }), "18.140.1.2");
+});
+
+test("marca da versao no conf do tunel", () => {
+  const conf = buildTunnelConf(PROFILE, ["3.120.0.10"], "eu");
+  assert.ok(conf.startsWith("# sro-bot jogo=eu"));
+  assert.equal(tunnelGame(conf), "eu");
+  assert.deepEqual(tunnelIps(conf), ["3.120.0.10"]);
+  assert.equal(tunnelGame(buildTunnelConf(PROFILE, ["54.169.246.199"], "global")), "global");
+  // Conf antigo (sem marca).
+  assert.equal(tunnelGame(buildTunnelConf(PROFILE, ["54.169.246.199"])), undefined);
 });

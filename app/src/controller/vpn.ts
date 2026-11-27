@@ -38,15 +38,27 @@ export function seedIps(g: GameVersion): string[] {
   return GAME_SEEDS[g].seeds;
 }
 
+export interface ProbeOpts {
+  inTunnel?: string[]; // so IPs no tunel (fora dele o ping vai direto e nao testa o tunel)
+  tunnelGame?: GameVersion; // versao que montou o tunel (marca no conf)
+  last?: string; // ultimo IP vivo visto dessa versao
+}
+
 // IP pra medir o caminho ate o servidor de jogo da versao escolhida (botao de
-// ping e check de saude): uma conexao viva desse jogo, senao um fixo da versao,
-// nunca o center. Nunca um IP de outra versao: na Europa, sem o jogo conectado,
-// nao ha IP pra testar (undefined). Com `inTunnel`, so IPs que estao no tunel
-// (fora dele o ping vai pela rota direta e nao diz nada do tunel).
-export function probeIp(g: GameVersion, seen: string[], inTunnel?: string[]): string | undefined {
+// ping e check de saude), nunca o center e nunca um IP de outra versao. Ordem:
+// conexao viva do jogo; o ultimo IP vivo visto; um fixo da versao; e, com o
+// tunel montado pela MESMA versao, um IP do tunel (o "Ligar VPN" so poe IPs da
+// versao escolhida). O ultimo caso e o do tunel mudo na Europa: a conexao do
+// jogo cai (fica em SYN_SENT, fora do `seen`) e a Europa nao tem IP fixo.
+export function probeIp(g: GameVersion, seen: string[], o: ProbeOpts = {}): string | undefined {
   const center = GAME_SEEDS[g].center;
-  const ok = (ip: string) => ip !== center && (!inTunnel || inTunnel.includes(ip));
-  return seen.find(ok) ?? GAME_SEEDS[g].seeds.find(ok);
+  const ok = (ip: string) => ip !== center && (!o.inTunnel || o.inTunnel.includes(ip));
+  return (
+    seen.find(ok) ??
+    (o.last && ok(o.last) ? o.last : undefined) ??
+    GAME_SEEDS[g].seeds.find(ok) ??
+    (o.inTunnel && o.tunnelGame === g ? o.inTunnel.find(ok) : undefined)
+  );
 }
 
 // Por que nao ha IP de teste (pro log e pra tela).
@@ -95,6 +107,14 @@ export function gameServerIps(procNetTcp: string, uid: number): string[] {
   return [...ips].sort();
 }
 
+// Marca da versao do jogo que montou o tunel, gravada como comentario no conf
+// (o WireGuard ignora linha com #). Conf antigo, sem marca: undefined.
+const GAME_MARK = /^#\s*sro-bot jogo=(global|eu)\s*$/m;
+
+export function tunnelGame(conf: string): GameVersion | undefined {
+  return GAME_MARK.exec(conf)?.[1] as GameVersion | undefined;
+}
+
 // AllowedIPs do tunel ja instalado.
 export function tunnelIps(conf: string): string[] {
   const m = /^AllowedIPs\s*=\s*(.+)$/m.exec(conf);
@@ -110,10 +130,10 @@ export function missingIps(tunnel: string[], seen: string[]): string[] {
 
 // Config do tunel a partir do perfil do wgcf: sem DNS (nao mexe no PC), so os
 // IPs do jogo, keepalive (a conexao parada nao expira no NAT) e endpoint fixo.
-export function buildTunnelConf(profile: string, ips: string[]): string {
+export function buildTunnelConf(profile: string, ips: string[], game?: GameVersion): string {
   if (!/PrivateKey\s*=/.test(profile) || !/PublicKey\s*=/.test(profile)) throw new Error("perfil do wgcf invalido");
   const allowed = [...new Set(ips)].map((ip) => `${ip}/32`).join(", ");
-  const out: string[] = [];
+  const out: string[] = game ? [`# sro-bot jogo=${game}`] : [];
   for (const line of profile.replace(/\r/g, "").split("\n")) {
     if (/^DNS\s*=/.test(line) || /^PersistentKeepalive\s*=/.test(line)) continue;
     if (/^AllowedIPs\s*=/.test(line)) {

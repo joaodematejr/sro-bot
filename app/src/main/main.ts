@@ -847,7 +847,8 @@ ipcMain.handle("vpn:health", async () => {
   try {
     ({ seen } = await gameIps(SERIAL));
   } catch {
-    // jogo fechado: o teste usa so os IPs fixos da versao
+    // jogo fechado ou conexao caida: o teste usa o ultimo IP vivo visto, os fixos
+    // da versao e os do tunel montado por ela (ver probeIp)
   }
   await vpnHealth((m) => win?.webContents.send("sro:log", "[vpn] " + m), settings.game, seen);
 });
