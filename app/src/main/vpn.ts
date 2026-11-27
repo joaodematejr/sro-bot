@@ -17,6 +17,7 @@ import {
   parseServiceState,
   probeIp,
   seedIps,
+  tunnelGame,
   type ServiceState,
   TUNNEL_NAME,
   tunnelIps,
@@ -48,6 +49,7 @@ export interface VpnStatus {
   account: boolean; // conta do WARP registrada
   service: ServiceState;
   ips: string[]; // IPs no tunel
+  game?: GameVersion; // versao do jogo que montou o tunel (conf antigo: sem marca)
 }
 
 async function serviceState(): Promise<ServiceState> {
@@ -63,8 +65,11 @@ async function serviceState(): Promise<ServiceState> {
 
 export async function vpnStatus(): Promise<VpnStatus> {
   let ips: string[] = [];
+  let game: GameVersion | undefined;
   try {
-    ips = tunnelIps(fs.readFileSync(confPath(), "utf8"));
+    const conf = fs.readFileSync(confPath(), "utf8");
+    ips = tunnelIps(conf);
+    game = tunnelGame(conf);
   } catch {
     // sem tunel configurado
   }
@@ -73,6 +78,7 @@ export async function vpnStatus(): Promise<VpnStatus> {
     account: fs.existsSync(file("wgcf-account.toml")),
     service: await serviceState(),
     ips,
+    game,
   };
 }
 
@@ -163,19 +169,22 @@ export async function vpnEnable(ips: string[], log: Log, game: GameVersion): Pro
   fs.mkdirSync(dir, { recursive: true });
   const profile = await ensureProfile(log);
   // IP do teste do tunel depois de instalar: da mesma versao (all nunca esta vazio).
-  const probe = probeIp(game, ips, all) ?? all[0];
+  const probe = probeIp(game, ips, { inTunnel: all, tunnelGame: game }) ?? all[0];
   const before = await serviceState();
   const current = (await vpnStatus()).ips;
   // Mesmos IPs e tunel instalado: nao reinstala (a reinstalacao deixou o tunel
   // mudo por 17 min); so libera o reinicio automatico e conserta se estiver mudo.
   if (before !== "missing" && all.length === current.length && all.every((ip) => current.includes(ip))) {
     log("o tunel ja tem esses IPs; liberando o reinicio automatico (aceite o pedido de administrador do Windows)...");
+    // Mesmos IPs: so regrava a copia local com a marca da versao (o servico usa
+    // a copia instalada, que nao muda), pro check de saude saber de quem e o tunel.
+    fs.writeFileSync(confPath(), buildTunnelConf(profile, all, game));
     await elevated([`Start-Service -Name '${WG_SERVICE}'`, ...afterInstallLines(await userSid(), probe)]);
     const st = await vpnStatus();
     log(st.service === "running" ? "VPN ligada; reinicio automatico liberado." : "o tunel nao subiu");
     return st;
   }
-  fs.writeFileSync(confPath(), buildTunnelConf(profile, all));
+  fs.writeFileSync(confPath(), buildTunnelConf(profile, all, game));
   log(`instalando o tunel (${all.length} IPs do jogo); aceite o pedido de administrador do Windows...`);
   await elevated([
     ...(before === "missing" ? [] : [uninstallLine]),
@@ -234,13 +243,17 @@ let fallbackAt = 0; // quando o check desligou o tunel (rota direta)
 // instalacao); continua mudo, desliga (o jogo vai pela rota direta) e tenta de
 // novo depois. Sem internet nao mexe em nada.
 let noProbeLogged = "";
+// Ultimo IP vivo (conexao do jogo no tunel) visto por versao: com o tunel mudo a
+// conexao do jogo cai e some do `seen`, mas o servidor continua o mesmo.
+const lastLive: Partial<Record<GameVersion, string>> = {};
 
 // `seen`: conexoes vivas do jogo da versao escolhida (gameIps). O IP de teste e
-// dessa versao e esta no tunel; sem nenhum, nao testa nem mexe no tunel.
+// dessa versao e esta no tunel (ver probeIp); sem nenhum, nao testa nem mexe no tunel.
 export async function vpnHealth(log: Log, game: GameVersion, seen: string[]): Promise<void> {
   const st = await vpnStatus();
   if (st.service === "missing") return;
-  const probe = probeIp(game, seen, st.ips);
+  const probe = probeIp(game, seen, { inTunnel: st.ips, tunnelGame: st.game, last: lastLive[game] });
+  if (probe && seen.includes(probe)) lastLive[game] = probe;
   if (!probe) {
     // Avisa uma vez por versao (o check roda a cada 2 min).
     if (noProbeLogged !== game) log(`check do tunel da ${GAME_LABELS[game]} parado: ${noProbeText(game)}.`);
