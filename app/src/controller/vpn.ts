@@ -9,6 +9,8 @@
 // com perda em rajada (PC e emulador juntos) e o jogo caia a cada 3 a 6 min.
 // Pelo WARP o servidor de jogo respondeu em 330 ms.
 
+import { GAME_LABELS, type GameVersion } from "./settings";
+
 export const TUNNEL_NAME = "srobot";
 export const WG_SERVICE = `WireGuardTunnel$${TUNNEL_NAME}`;
 
@@ -20,9 +22,37 @@ export const WGCF_SHA256 = "e222fd9443d7cb3264d825a3e86967797fc9c938507c5d93e3cc
 // engage.cloudflareclient.com: o IP fixo evita depender do DNS na subida do tunel.
 export const WARP_ENDPOINT = "162.159.192.1:2408";
 
-// Center SEA (seacenter.n52srom.com) e o servidor de jogo do servidor principal. Os
-// outros servidores entram quando o bot ve a conexao do jogo.
-export const SEED_IPS = ["13.250.144.245", "54.169.246.199"];
+// IPs fixos por versao do jogo: entram no tunel sempre que ele e ligado com essa
+// versao na configuracao. Os outros servidores entram quando o bot ve a conexao
+// do jogo ("Atualizar IPs").
+//   Global: center SEA (seacenter.n52srom.com, so atende no login) e o servidor
+//           de jogo do servidor principal.
+//   Europa: nenhum IP conhecido ate o servidor abrir (2026-11-30); os IPs vem da
+//           conexao do jogo.
+export const GAME_SEEDS: Record<GameVersion, { center?: string; seeds: string[] }> = {
+  global: { center: "13.250.144.245", seeds: ["13.250.144.245", "54.169.246.199"] },
+  eu: { seeds: [] },
+};
+
+export function seedIps(g: GameVersion): string[] {
+  return GAME_SEEDS[g].seeds;
+}
+
+// IP pra medir o caminho ate o servidor de jogo da versao escolhida (botao de
+// ping e check de saude): uma conexao viva desse jogo, senao um fixo da versao,
+// nunca o center. Nunca um IP de outra versao: na Europa, sem o jogo conectado,
+// nao ha IP pra testar (undefined). Com `inTunnel`, so IPs que estao no tunel
+// (fora dele o ping vai pela rota direta e nao diz nada do tunel).
+export function probeIp(g: GameVersion, seen: string[], inTunnel?: string[]): string | undefined {
+  const center = GAME_SEEDS[g].center;
+  const ok = (ip: string) => ip !== center && (!inTunnel || inTunnel.includes(ip));
+  return seen.find(ok) ?? GAME_SEEDS[g].seeds.find(ok);
+}
+
+// Por que nao ha IP de teste (pro log e pra tela).
+export function noProbeText(g: GameVersion): string {
+  return `sem IP do servidor da ${GAME_LABELS[g]} ainda: entre no jogo (conectado ao servidor) pra o bot ver a conexao`;
+}
 
 // Conexao do jogo que nao e do jogo: CDN, anuncio, SDK (HTTP e HTTPS).
 const NON_GAME_PORTS = new Set([80, 443]);

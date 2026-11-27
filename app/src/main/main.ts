@@ -60,6 +60,7 @@ import {
   type WorldActionState,
 } from "../controller/world";
 import { gameIps, pingIp, setVpnDir, vpnDisable, vpnEnable, vpnHealth, vpnStatus } from "./vpn";
+import { noProbeText, probeIp } from "../controller/vpn";
 import { hasCredentials, saveCredentials, setCredentialsDir } from "./credentials";
 import { alertTelegram, hasTelegramToken, linkTelegram, loadTelegram, saveTelegram, setTelegramDir, type TelegramSettings, testTelegram } from "./telegram";
 import type { TelegramAlert } from "../controller/telegram";
@@ -810,7 +811,9 @@ ipcMain.handle("vpn:status", async () => {
   } catch {
     // emulador ou jogo fechado: sem IPs do jogo agora
   }
-  return { ...st, seen, missing };
+  // IP do botao de ping: sempre da versao do jogo escolhida.
+  const probe = probeIp(settings.game, seen);
+  return { ...st, seen, missing, probe, noProbe: probe ? undefined : noProbeText(settings.game) };
 });
 
 ipcMain.handle("vpn:enable", async (_e, ips: string[]) => {
@@ -822,7 +825,7 @@ ipcMain.handle("vpn:enable", async (_e, ips: string[]) => {
     } catch {
       // sem jogo aberto: vai so com os IPs pedidos e os fixos
     }
-    return { ok: true, status: await vpnEnable([...ips, ...seen], push) };
+    return { ok: true, status: await vpnEnable([...ips, ...seen], push, settings.game) };
   } catch (e) {
     push("falhou: " + (e instanceof Error ? e.message : String(e)));
     return { ok: false, erro: e instanceof Error ? e.message : String(e) };
@@ -840,7 +843,13 @@ ipcMain.handle("vpn:disable", async () => {
 });
 
 ipcMain.handle("vpn:health", async () => {
-  await vpnHealth((m) => win?.webContents.send("sro:log", "[vpn] " + m));
+  let seen: string[] = [];
+  try {
+    ({ seen } = await gameIps(SERIAL));
+  } catch {
+    // jogo fechado: o teste usa so os IPs fixos da versao
+  }
+  await vpnHealth((m) => win?.webContents.send("sro:log", "[vpn] " + m), settings.game, seen);
 });
 
 ipcMain.handle("vpn:ping", async (_e, ip: string) => {

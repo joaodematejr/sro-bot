@@ -309,6 +309,8 @@ interface VpnView {
   ips: string[]; // no tunel
   seen: string[]; // que o jogo usa agora
   missing: string[]; // do jogo, fora do tunel
+  probe?: string; // IP do ping, da versao do jogo escolhida
+  noProbe?: string; // por que nao ha IP pra medir
 }
 
 const appStartedAt = Date.now();
@@ -365,8 +367,16 @@ async function vpnAction(fn: () => Promise<{ ok: boolean; erro?: string }>): Pro
 }
 
 async function measureVpnPing(): Promise<void> {
-  // Servidor de jogo que o jogo usa agora (o center so atende no login).
-  const ip = lastVpn?.seen.find((i) => i !== "13.250.144.245") ?? "54.169.246.199";
+  // Servidor de jogo da versao escolhida (o main escolhe: conexao viva do jogo,
+  // senao um IP fixo da versao, nunca o center). Le de novo antes de medir.
+  await refreshVpn();
+  const ip = lastVpn?.probe;
+  if (!ip) {
+    const why = lastVpn?.noProbe ?? "sem IP do servidor de jogo pra medir";
+    $("vpn-ping").textContent = why;
+    log(`[vpn] ping: ${why}.`);
+    return;
+  }
   $("vpn-ping").textContent = `medindo ${ip}...`;
   const r = await window.sro.vpnPing(ip);
   const text = r.avgMs === undefined ? `${ip}: sem resposta` : `${ip}: ${r.avgMs} ms, perda ${r.lossPct ?? "?"}%`;
