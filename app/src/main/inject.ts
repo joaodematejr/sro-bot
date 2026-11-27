@@ -18,9 +18,16 @@ import {
   backupDirName,
   type CheckResult,
   consolePath,
+  focusedPackage,
+  gameChecks,
+  gamePackage,
+  type GameVersion,
   LD_STALE_SERVICES,
   libDirFromPmPath,
   type MumuInstance,
+  otherGame,
+  type OtherGameOpen,
+  otherGameOpen,
   parseMumuInfo,
   parseTasklist,
   shouldUnstickLd,
@@ -228,13 +235,26 @@ export async function checkEnvironment(serial: string, instance: number): Promis
   } catch {
     out.push({ name: "root", ok: false, detail: `sem root (ligue o root nas configuracoes do ${label})` });
   }
-  try {
-    const p = await adb(serial, ["shell", "pm", "path", gamePkg()]);
-    out.push({ name: "jogo", ok: p.includes("package:"), detail: p.includes("package:") ? `${gamePkg()} instalado` : `${gamePkg()} nao instalado` });
-  } catch {
-    out.push({ name: "jogo", ok: false, detail: `${gamePkg()} nao instalado` });
-  }
+  // Os dois APKs (Global e Europa), dizendo qual o bot usa.
+  const installed = async (g: GameVersion) =>
+    (await adb(serial, ["shell", "pm", "path", gamePackage(g)]).catch(() => "")).includes("package:");
+  out.push(...gameChecks(e.game, { global: await installed("global"), eu: await installed("eu") }));
   return out;
+}
+
+// A versao do jogo que NAO esta na configuracao esta aberta (na frente ou em
+// segundo plano)? Leitura sem root (dumpsys e pidof rodam como o shell do adb),
+// pra poder rodar de tempos em tempos sem subir su. undefined = nao, ou sem
+// resposta do adb.
+export async function otherGameState(serial: string): Promise<OtherGameOpen | undefined> {
+  const sel = emulator().game;
+  try {
+    const focus = await adb(serial, ["shell", "dumpsys window | grep mCurrentFocus"]).catch(() => "");
+    const pid = await adb(serial, ["shell", `pidof ${gamePackage(otherGame(sel))} || echo none`]);
+    return otherGameOpen(sel, focusedPackage(focus), gameStateFromPidof(pid) === "running");
+  } catch {
+    return undefined;
+  }
 }
 
 // Fecha o jogo sem mexer nas libs (o engine injetado volta no proximo start).

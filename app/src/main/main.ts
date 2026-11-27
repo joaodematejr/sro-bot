@@ -17,6 +17,7 @@ import {
   gameForeground,
   gameState,
   injectEngine,
+  otherGameState,
   readGameFile,
   checkEnvironment,
   resolveSerial,
@@ -25,7 +26,7 @@ import {
   stopGame,
 } from "./inject";
 import { type GameState, reconnectPlan } from "../controller/libstate";
-import { type AppSettings, consolePath, normalizeSettings, resolveAdb, serialFor } from "../controller/settings";
+import { type AppSettings, consolePath, normalizeSettings, otherGameText, resolveAdb, serialFor } from "../controller/settings";
 import { adbBin, setAdbBin, setEmulator } from "./adbbin";
 import { chatChannelId, chatSendCheck, parseTzOffset, readChatChannel, sayBody } from "../controller/chat";
 import { parseBufs } from "../controller/charstatus";
@@ -399,6 +400,13 @@ ipcMain.handle("engine:bag", async () => {
     empty: e.ok === true && typeof e.int === "number" ? e.int : undefined,
     used: u.ok === true && typeof u.int === "number" ? u.int : undefined,
   };
+});
+
+// A outra versao do jogo (o APK que nao esta na configuracao) esta aberta?
+// null = nao. Leitura sem root, pro aviso do topo e pro log do watchdog.
+ipcMain.handle("game:other", async () => {
+  const o = await otherGameState(SERIAL);
+  return o ? { ...o, text: otherGameText(settings.game, o) } : null;
 });
 
 // True se o jogo esta em primeiro plano (watchdog usa pra decidir reabrir).

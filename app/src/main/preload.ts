@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("sro", {
   inject: () => ipcRenderer.invoke("engine:inject"),
   restore: () => ipcRenderer.invoke("engine:restore"),
   gameForeground: () => ipcRenderer.invoke("engine:gamefg"),
+  otherGame: () => ipcRenderer.invoke("game:other"),
   reopen: (restart?: boolean) => ipcRenderer.invoke("engine:reopen", restart),
   connectionLost: () => ipcRenderer.invoke("engine:connlost"),
   autoFight: (on: boolean) => ipcRenderer.invoke("engine:autofight", on),

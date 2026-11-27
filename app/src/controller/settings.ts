@@ -169,3 +169,50 @@ export interface CheckResult {
   ok: boolean;
   detail: string;
 }
+
+// ---- Os dois APKs no mesmo emulador ----
+
+export function otherGame(g: GameVersion): GameVersion {
+  return g === "eu" ? "global" : "eu";
+}
+
+// Pacote da janela em foco, da saida do `dumpsys window | grep mCurrentFocus`
+// (visto no MuMu em 2026-11-27):
+//   mCurrentFocus=Window{412aee7 u0 com.hive.silkroad/com.gihot.unityplugin.GihotGameActivity}
+export function focusedPackage(out: string): string | undefined {
+  return /mCurrentFocus=Window\{\S+ \S+ ([\w.]+)\//.exec(out)?.[1];
+}
+
+export interface OtherGameOpen {
+  version: GameVersion; // a versao que NAO esta na configuracao
+  foreground: boolean; // na frente (senao so o processo vivo em segundo plano)
+}
+
+// O outro APK esta aberto? Na frente pelo foco; em segundo plano pelo pidof
+// (sair pro launcher deixa o processo vivo).
+export function otherGameOpen(selected: GameVersion, focusedPkg: string | undefined, otherRunning: boolean): OtherGameOpen | undefined {
+  const other = otherGame(selected);
+  const foreground = focusedPkg === gamePackage(other);
+  if (!foreground && !otherRunning) return undefined;
+  return { version: other, foreground };
+}
+
+export function otherGameText(selected: GameVersion, o: OtherGameOpen): string {
+  const where = o.foreground ? "esta aberta na frente" : "esta aberta em segundo plano";
+  return `a versao ${GAME_LABELS[o.version]} (${gamePackage(o.version)}) ${where}, mas o bot esta configurado pra ${GAME_LABELS[selected]}: ele so controla a ${GAME_LABELS[selected]}.`;
+}
+
+// Linhas do "Testar conexao" pros dois APKs. So o selecionado precisa estar
+// instalado; o outro e informativo e nunca conta como falha.
+export function gameChecks(selected: GameVersion, installed: Record<GameVersion, boolean>): CheckResult[] {
+  return (["global", "eu"] as GameVersion[]).map((g) => {
+    const pkg = gamePackage(g);
+    const sel = g === selected;
+    const inst = installed[g] ? "instalado" : "nao instalado";
+    return {
+      name: `jogo ${GAME_LABELS[g]}`,
+      ok: sel ? installed[g] : true,
+      detail: sel ? `${pkg} ${inst} (selecionado: o bot usa este)` : `${pkg} ${inst} (nao selecionado)`,
+    };
+  });
+}
