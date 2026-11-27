@@ -993,3 +993,30 @@ auto-play ligado), so com comandos que o engine ja tem (GETP, ENTS, OBJV, FIND, 
   `ReqChangeLine`. Recusado com `XLevelStatistics get_IsInFightingState` verdadeiro
   (o jogo ignora a troca em combate). Em instancia a lista nao e lida (fica a do
   ultimo mapa aberto).
+
+## Versao Europa: com.hive.silkroad (2026-11-27)
+
+APK proprio da Hive, lancamento em 2026-11-30. Instalado no MuMu (Android 12,
+`emulator-5554`) ao lado do Global, so observado em runtime com o engine
+injetado (nenhum arquivo do jogo foi decifrado).
+
+- Pacote `com.hive.silkroad`, versao 0.0.12 (tela de login: 0.0.12.4.20),
+  Unity **6000.0.77f1** (o Global 2.3.12 esta em 6000.0.60f1). Mesmo conjunto
+  de libs arm64 e o mesmo `libmain.so` de 6696 bytes (md5 do original da Europa:
+  `1ba9bf57873cc8bf776b400b33c27daa`). A troca do `libmain.so` funciona igual.
+- Engine subiu sem crash: API do IL2CPP por dlsym, hooks em
+  `UnityMainThreadDispatcher.Update` e `UICamera.Update` chamando, 88
+  assemblies com `XMainClient`, canal na 27100. Pasta de dados:
+  `/data/data/com.hive.silkroad/files`.
+- As 65 classes que o app cita nos comandos (`XEntityMgr`, `XTaskDocument`,
+  `XRechargeDocument`, `XActivityDocument`, `XServerTimeMgr`, `DownloadPkgDlg`,
+  `XLoginView`, `XSelectCharView` e o resto) existem com o mesmo nome, achadas
+  uma a uma por `FIND`. `XEntityMgr` tem `get_singleton` e `get_Player`, e o
+  `<Player>k__BackingField` esta em `+0xf8`, como no Global.
+- Login: abre na tela nativa do SDK (fora do Unity) com os mesmos textos do
+  Global, "Login with Google" / "Login with ID" / "Play as Guest", e o
+  formulario do "Login with ID" tem `EditText` de ID, `EditText` de senha e
+  `Button` "Login" (+ "Register"). O `nextSdkStep` reconhece as duas telas.
+- Sem prova: login de verdade (sem conta da Europa e servidor fechado),
+  telas depois do SDK (servidor, char), estado em mundo, metodos e campos alem
+  dos nomes de classe, e os IPs dos servidores pra VPN.

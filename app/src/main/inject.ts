@@ -15,6 +15,7 @@ import { promisify } from "node:util";
 
 import { describeBase, type GameState, gameStateFromPidof, type LibBase, planInject } from "../controller/libstate";
 import {
+  backupDirName,
   type CheckResult,
   consolePath,
   LD_STALE_SERVICES,
@@ -24,11 +25,11 @@ import {
   parseTasklist,
   shouldUnstickLd,
 } from "../controller/settings";
-import { adbBin, emulator } from "./adbbin";
+import { adbBin, emulator, gamePkg } from "./adbbin";
 
 const execFileP = promisify(execFile);
 
-const PKG = "com.silkroad.mb";
+// O pacote do jogo vem da configuracao (gamePkg: Global ou Europa).
 
 // engine/build fica dois niveis acima de app/dist.
 const ENGINE_DIR = path.join(__dirname, "..", "..", "engine");
@@ -43,7 +44,7 @@ export function setBackupDir(dir: string): void {
 }
 
 function deviceDir(serial: string): string {
-  return path.join(backupRoot, serial.replace(/[^\w.-]/g, "_"));
+  return path.join(backupRoot, backupDirName(serial, gamePkg()));
 }
 
 function loadBase(serial: string): LibBase | null {
@@ -177,7 +178,7 @@ async function deviceOnline(serial: string): Promise<boolean> {
 // `|| echo none` o erro so sobra pra falha do adb.
 export async function gameState(serial: string): Promise<GameState> {
   try {
-    return gameStateFromPidof(await sue(serial, `pidof ${PKG} || echo none`));
+    return gameStateFromPidof(await sue(serial, `pidof ${gamePkg()} || echo none`));
   } catch {
     return "unknown";
   }
@@ -228,17 +229,17 @@ export async function checkEnvironment(serial: string, instance: number): Promis
     out.push({ name: "root", ok: false, detail: `sem root (ligue o root nas configuracoes do ${label})` });
   }
   try {
-    const p = await adb(serial, ["shell", "pm", "path", PKG]);
-    out.push({ name: "jogo", ok: p.includes("package:"), detail: p.includes("package:") ? `${PKG} instalado` : `${PKG} nao instalado` });
+    const p = await adb(serial, ["shell", "pm", "path", gamePkg()]);
+    out.push({ name: "jogo", ok: p.includes("package:"), detail: p.includes("package:") ? `${gamePkg()} instalado` : `${gamePkg()} nao instalado` });
   } catch {
-    out.push({ name: "jogo", ok: false, detail: `${PKG} nao instalado` });
+    out.push({ name: "jogo", ok: false, detail: `${gamePkg()} nao instalado` });
   }
   return out;
 }
 
 // Fecha o jogo sem mexer nas libs (o engine injetado volta no proximo start).
 export async function stopGame(serial: string): Promise<void> {
-  await sue(serial, `am force-stop ${PKG}`);
+  await sue(serial, `am force-stop ${gamePkg()}`);
 }
 
 // True se o jogo esta em PRIMEIRO PLANO (activity focada). Fechar o jogo no
@@ -247,7 +248,7 @@ export async function stopGame(serial: string): Promise<void> {
 export async function gameForeground(serial: string): Promise<boolean> {
   try {
     const out = await sue(serial, "dumpsys window | grep mCurrentFocus");
-    return out.includes(PKG);
+    return out.includes(gamePkg());
   } catch {
     return false;
   }
@@ -257,7 +258,7 @@ export async function gameForeground(serial: string): Promise<boolean> {
 // o engine de novo). Leve: nao faz restore/inject.
 export async function bringGameToFront(serial: string, log: Logger = () => {}): Promise<void> {
   log("trazendo o jogo pra frente...");
-  await sue(serial, `monkey -p ${PKG} -c android.intent.category.LAUNCHER 1`);
+  await sue(serial, `monkey -p ${gamePkg()} -c android.intent.category.LAUNCHER 1`);
 }
 
 // Garante o emulador aberto. Se o device ja responde, nao faz nada. Senao tenta
@@ -346,13 +347,13 @@ async function exists(serial: string, remote: string): Promise<boolean> {
 // nivel aleatorio a mais em /data/app); se falhar, a busca antiga.
 async function libDir(serial: string): Promise<string> {
   try {
-    const dir = libDirFromPmPath(await adb(serial, ["shell", "pm", "path", PKG]));
+    const dir = libDirFromPmPath(await adb(serial, ["shell", "pm", "path", gamePkg()]));
     if (dir && (await sue(serial, `[ -d ${dir} ] && echo 1 || echo 0`)).trim() === "1") return dir;
   } catch {
     /* cai na busca antiga */
   }
-  const dir = await sue(serial, `ls -d /data/app/*${PKG}*/lib/arm64`);
-  if (!dir) throw new Error(`lib dir do ${PKG} nao encontrado`);
+  const dir = await sue(serial, `ls -d /data/app/*${gamePkg()}*/lib/arm64`);
+  if (!dir) throw new Error(`lib dir do ${gamePkg()} nao encontrado`);
   return dir;
 }
 
@@ -416,7 +417,7 @@ export async function injectEngine(serial: string, log: Logger = () => {}): Prom
   const mainMd5 = await md5(serial, `${dir}/libmain.so`);
   const coreExists = await exists(serial, `${dir}/libcore.so`);
   log("parando o jogo...");
-  await sue(serial, `am force-stop ${PKG}`);
+  await sue(serial, `am force-stop ${gamePkg()}`);
 
   const plan = planInject(dir, mainMd5, coreExists, ourMd5, loadBase(serial));
   if (plan.kind === "fresh") {
@@ -437,7 +438,7 @@ export async function injectEngine(serial: string, log: Logger = () => {}): Prom
   await pushInto(serial, LOADER_SO, `${dir}/libmain.so`, log);
 
   log("subindo o jogo...");
-  await sue(serial, `monkey -p ${PKG} -c android.intent.category.LAUNCHER 1`);
+  await sue(serial, `monkey -p ${gamePkg()} -c android.intent.category.LAUNCHER 1`);
   log("injetado. logue o char em mundo.");
 }
 
@@ -447,7 +448,7 @@ export async function injectEngine(serial: string, log: Logger = () => {}): Prom
 // So nome simples, sem caminho.
 export async function readGameFile(serial: string, name: string): Promise<string> {
   if (!/^[a-z_]+\.txt$/.test(name)) throw new Error("nome de arquivo invalido");
-  return sue(serial, `cat /data/data/${PKG}/files/${name}`);
+  return sue(serial, `cat /data/data/${gamePkg()}/files/${name}`);
 }
 
 export async function restoreGame(serial: string, log: Logger = () => {}): Promise<void> {
@@ -457,7 +458,7 @@ export async function restoreGame(serial: string, log: Logger = () => {}): Promi
   const ourMd5 = localMd5(LOADER_SO);
   const mainMd5 = await md5(serial, `${dir}/libmain.so`);
   log("parando o jogo...");
-  await sue(serial, `am force-stop ${PKG}`);
+  await sue(serial, `am force-stop ${gamePkg()}`);
   if (mainMd5 !== ourMd5) {
     await sue(serial, `rm -f ${dir}/libsroengine.so`);
     log("nao estava injetado; nada a restaurar.");

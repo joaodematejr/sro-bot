@@ -22,7 +22,7 @@ import {
   WGCF_SHA256,
   WGCF_URL,
 } from "../controller/vpn";
-import { adbBin } from "./adbbin";
+import { adbBin, gamePkg } from "./adbbin";
 
 const execFileP = promisify(execFile);
 type Log = (msg: string) => void;
@@ -30,7 +30,6 @@ type Log = (msg: string) => void;
 const WIREGUARD_EXE = "C:\\Program Files\\WireGuard\\wireguard.exe";
 const WHOAMI_EXE = "C:\\Windows\\System32\\whoami.exe";
 const CENTER_IP = SEED_IPS[0];
-const GAME_PKG = "com.silkroad.mb";
 
 let dir = "";
 
@@ -201,7 +200,7 @@ export async function vpnDisable(log: Log): Promise<VpnStatus> {
 export async function gameIps(serial: string): Promise<{ seen: string[]; missing: string[] }> {
   const sh = async (cmd: string) =>
     (await execFileP(adbBin(), ["-s", serial, "shell", cmd], { timeout: 15000 })).stdout.replace(/\r/g, "");
-  const dump = await sh(`dumpsys package ${GAME_PKG} | grep userId=`);
+  const dump = await sh(`dumpsys package ${gamePkg()} | grep userId=`);
   const uid = Number(/userId=(\d+)/.exec(dump)?.[1]);
   if (!uid) return { seen: [], missing: [] };
   const seen = gameServerIps(await sh("cat /proc/net/tcp /proc/net/tcp6"), uid);

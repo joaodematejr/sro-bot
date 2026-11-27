@@ -258,6 +258,7 @@ interface SettingsUi {
   mumuDir: string;
   instance: number;
   adbPath: string;
+  game: "global" | "eu";
 }
 
 interface SettingsView {
@@ -268,6 +269,7 @@ interface SettingsView {
 }
 
 function showSettings(v: SettingsView): void {
+  ($("st-game") as HTMLSelectElement).value = v.settings.game;
   ($("st-emu") as HTMLSelectElement).value = v.settings.emulator;
   ($("st-lddir") as HTMLInputElement).value = v.settings.ldplayerDir;
   ($("st-mumudir") as HTMLInputElement).value = v.settings.mumuDir;
@@ -276,7 +278,8 @@ function showSettings(v: SettingsView): void {
   $("st-serial").textContent = v.serial;
   $("st-adbinfo").textContent = "adb em uso: " + v.adb;
   $("inst-name").textContent = v.settings.emulator === "mumu" ? "MuMu Player" : "LDPlayer";
-  $("inst-info").textContent = `${v.settings.emulator} · idx ${v.settings.instance} · ${v.serial}`;
+  const game = v.settings.game === "eu" ? "Europa" : "Global";
+  $("inst-info").textContent = `${v.settings.emulator} · idx ${v.settings.instance} · ${v.serial} · ${game}`;
 }
 
 function readSettingsUi(): SettingsUi {
@@ -287,6 +290,7 @@ function readSettingsUi(): SettingsUi {
     mumuDir: ($("st-mumudir") as HTMLInputElement).value.trim(),
     instance: Number.isFinite(n) && n >= 0 ? n : 0,
     adbPath: ($("st-adb") as HTMLInputElement).value.trim(),
+    game: ($("st-game") as HTMLSelectElement).value === "eu" ? "eu" : "global",
   };
 }
 

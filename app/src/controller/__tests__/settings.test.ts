@@ -2,10 +2,13 @@ import assert from "node:assert";
 import { test } from "node:test";
 
 import {
+  backupDirName,
   consolePath,
   DEFAULT_SETTINGS,
+  gamePackage,
   libDirFromPmPath,
   normalizeSettings,
+  parseGameVersion,
   LD_UNSTICK_AFTER_MS,
   parseMumuInfo,
   parseTasklist,
@@ -91,4 +94,25 @@ test("pasta das libs pelo pm path, no Android 9 e no 11+", () => {
   assert.equal(libDirFromPmPath("package:/data/app/~~Zx1==/com.silkroad.mb-Qw2==/base.apk\npackage:/data/app/~~Zx1==/com.silkroad.mb-Qw2==/split_config.arm64_v8a.apk"),
     "/data/app/~~Zx1==/com.silkroad.mb-Qw2==/lib/arm64");
   assert.equal(libDirFromPmPath(""), undefined);
+});
+
+test("versao do jogo: pacote, normalizacao e pasta do backup", () => {
+  assert.equal(gamePackage("global"), "com.silkroad.mb");
+  assert.equal(gamePackage("eu"), "com.hive.silkroad");
+  assert.equal(parseGameVersion("eu"), "eu");
+  assert.equal(parseGameVersion("x"), "global");
+  assert.equal(parseGameVersion(undefined), "global");
+  // settings.json antigo (sem o campo) continua no Global.
+  assert.equal(normalizeSettings({ emulator: "mumu" }).game, "global");
+  assert.equal(normalizeSettings({ game: "eu" }).game, "eu");
+  // Global mantem o nome antigo da pasta; Europa ganha o pacote no nome.
+  assert.equal(backupDirName("127.0.0.1:5555", "com.silkroad.mb"), "127.0.0.1_5555");
+  assert.equal(backupDirName("127.0.0.1:5555", "com.hive.silkroad"), "127.0.0.1_5555_com.hive.silkroad");
+  assert.equal(backupDirName("emulator-5554", "com.hive.silkroad"), "emulator-5554_com.hive.silkroad");
+});
+
+// Pacote da Europa no MuMu (Android 12), saida real do `pm path` em 2026-11-27.
+test("libDirFromPmPath acha a pasta do APK da Europa", () => {
+  assert.equal(libDirFromPmPath("package:/data/app/~~Can2kNvel35DliA_PxVieA==/com.hive.silkroad-Jaf5YN5qqQufWK5IwqqBNA==/base.apk\n"),
+    "/data/app/~~Can2kNvel35DliA_PxVieA==/com.hive.silkroad-Jaf5YN5qqQufWK5IwqqBNA==/lib/arm64");
 });

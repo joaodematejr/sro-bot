@@ -8,12 +8,37 @@
 
 export type EmulatorKind = "ldplayer" | "mumu";
 
+// Versao do jogo: cada uma e um APK proprio (pacote Android diferente), e as
+// duas podem estar instaladas no mesmo emulador.
+//   global: com.silkroad.mb (2.3.x, Unity 6000.0.60f1)
+//   eu:     com.hive.silkroad (Europa, publicado pela Hive, Unity 6000.0.77f1)
+export type GameVersion = "global" | "eu";
+
+export const GAME_PACKAGES: Record<GameVersion, string> = {
+  global: "com.silkroad.mb",
+  eu: "com.hive.silkroad",
+};
+
+export const GAME_LABELS: Record<GameVersion, string> = {
+  global: "Global",
+  eu: "Europa",
+};
+
+export function gamePackage(g: GameVersion): string {
+  return GAME_PACKAGES[g] ?? GAME_PACKAGES.global;
+}
+
+export function parseGameVersion(v: unknown): GameVersion {
+  return v === "eu" ? "eu" : "global";
+}
+
 export interface AppSettings {
   emulator: EmulatorKind;
   ldplayerDir: string; // pasta com ldconsole.exe e adb.exe
   mumuDir: string; // pasta com nx_main\MuMuManager.exe
   instance: number; // indice da instancia no emulador (0, 1, ...)
   adbPath: string; // vazio = o adb do emulador, senao o do PATH
+  game: GameVersion; // qual APK do jogo o bot controla
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -22,7 +47,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mumuDir: "C:\\Program Files\\Netease\\MuMuPlayer",
   instance: 0,
   adbPath: "",
+  game: "global",
 };
+
+// Pasta do backup do libmain.so por emulador E por jogo: com os dois APKs no
+// mesmo emulador, o backup de um nao pode sobrescrever o do outro. O Global
+// fica no nome antigo (so o serial) pra achar os backups ja guardados.
+export function backupDirName(serial: string, pkg: string): string {
+  const s = serial.replace(/[^\w.-]/g, "_");
+  return pkg === GAME_PACKAGES.global ? s : `${s}_${pkg.replace(/[^\w.-]/g, "_")}`;
+}
 
 export function joinWin(dir: string, file: string): string {
   return dir.replace(/[\\/]+$/, "") + "\\" + file;
@@ -57,6 +91,7 @@ export function normalizeSettings(raw: Partial<AppSettings> | null | undefined):
     mumuDir: dir(r.mumuDir, DEFAULT_SETTINGS.mumuDir),
     instance: Number.isFinite(inst) && inst >= 0 && inst <= 99 ? Math.floor(inst) : DEFAULT_SETTINGS.instance,
     adbPath: typeof r.adbPath === "string" ? r.adbPath.trim() : "",
+    game: parseGameVersion(r.game),
   };
 }
 

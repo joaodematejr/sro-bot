@@ -58,6 +58,33 @@ std::atomic<bool> g_ready{false};
 // A tela de atualizacao do jogo (hot update) aparece antes dele carregar.
 std::atomic<bool> g_boot_ready{false};
 
+// Pasta de dados do jogo (/data/data/<pacote>/files/). O pacote sai do
+// /proc/self/cmdline (no Android o processo principal tem o nome do pacote),
+// assim o mesmo engine serve o Global (com.silkroad.mb) e a Europa
+// (com.hive.silkroad). Processo secundario vem como "pacote:nome".
+const std::string& game_files_dir() {
+    static const std::string dir = [] {
+        std::string pkg;
+        if (FILE* f = std::fopen("/proc/self/cmdline", "r")) {
+            char buf[256] = {0};
+            size_t n = std::fread(buf, 1, sizeof(buf) - 1, f);
+            std::fclose(f);
+            pkg.assign(buf, strnlen(buf, n));
+        }
+        size_t colon = pkg.find(':');
+        if (colon != std::string::npos) pkg.resize(colon);
+        if (pkg.empty() || pkg.find('/') != std::string::npos) pkg = "com.silkroad.mb";
+        LOG("pasta de dados do jogo: /data/data/%s/files", pkg.c_str());
+        return "/data/data/" + pkg + "/files/";
+    }();
+    return dir;
+}
+
+// Abre (sobrescrevendo) um arquivo de saida na pasta de dados do jogo.
+FILE* open_game_file(const char* name) {
+    return std::fopen((game_files_dir() + name).c_str(), "w");
+}
+
 // Fila de acoes executadas na thread principal do jogo (via hook de Update).
 struct Action {
     int type;   // 1 = move, 2 = auto-toggle
@@ -331,7 +358,7 @@ bool is_system_assembly(const char* name) {
 void dump_discovery(Il2CppApi& api, const void** assemblies, size_t count) {
     static const char* kw[] = {"Player", "LocalPlayer", "MyPlayer", "Role", "Hero",
                                "Avatar", "Self", "MainChar", "MainRole"};
-    FILE* f = std::fopen("/data/data/com.silkroad.mb/files/sro_dump.txt", "w");
+    FILE* f = open_game_file("sro_dump.txt");
     if (!f) {
         LOGE("nao abriu o arquivo de dump");
         return;
@@ -433,7 +460,7 @@ void dump_class_fields(FILE* f, Il2CppApi& api, void* klass, bool read_statics) 
 // varre managers/singletons, para achar onde posicao/vida moram e o ponteiro
 // da instancia do jogador local.
 void dump_player_chain(Il2CppApi& api, const void* img) {
-    FILE* f = std::fopen("/data/data/com.silkroad.mb/files/sro_dump.txt", "w");
+    FILE* f = open_game_file("sro_dump.txt");
     if (!f) {
         LOGE("nao abriu dump");
         return;
@@ -715,7 +742,7 @@ int dump_object_typed(Il2CppApi& api, void* obj, const char* label, FILE* f) {
 // ponteiro de heap (um nivel), para achar HP/MP por valor. So usa dump_raw
 // (leitura guardada), sem object_get_class em ponteiro duvidoso.
 void dump_player_scan(Il2CppApi& api, void* player, void* player_class) {
-    FILE* f = std::fopen("/data/data/com.silkroad.mb/files/sro_player.txt", "w");
+    FILE* f = open_game_file("sro_player.txt");
     if (!f) return;
     dump_raw(player, "XPlayer_self", 0x400, f);
     if (api.class_get_fields && api.field_get_name) {
@@ -746,7 +773,7 @@ void dump_player_scan(Il2CppApi& api, void* player, void* player_class) {
 // Despeja XPlayerAttributes, seus sub-objetos de atributo (onde HP/MP moram) e
 // o nome. Casar os valores com a tela identifica cada campo.
 void dump_attr_values(Il2CppApi& api, void* attr) {
-    FILE* f = std::fopen("/data/data/com.silkroad.mb/files/sro_attr.txt", "w");
+    FILE* f = open_game_file("sro_attr.txt");
     if (!f) return;
     dump_object_values(api, attr, "XPlayerAttributes", f);
 
@@ -1006,7 +1033,7 @@ void dump_methods(Il2CppApi& api, void* klass, const char* label, FILE* f) {
 void dump_player_methods(Il2CppApi& api, const void* img) {
     void* player = current_player(api, img);
     if (!player) return;
-    FILE* f = std::fopen("/data/data/com.silkroad.mb/files/sro_methods.txt", "w");
+    FILE* f = open_game_file("sro_methods.txt");
     if (!f) return;
     FaultGuard guard;
     if (api.object_get_class) {
@@ -1105,7 +1132,7 @@ std::string do_attr_dump() {
     const void* m = acls ? g_api.class_get_method_from_name(acls, "GetAttr", 1) : nullptr;
     if (!m) return "{\"ok\":false,\"erro\":\"GetAttr ausente\"}";
 
-    FILE* f = std::fopen("/data/data/com.silkroad.mb/files/sro_attrvals.txt", "w");
+    FILE* f = open_game_file("sro_attrvals.txt");
     if (!f) return "{\"ok\":false,\"erro\":\"sem arquivo\"}";
 
     // nomes do enum XAttributeDefine (campos estaticos) + valor do enum
@@ -1182,7 +1209,7 @@ bool derives_monobehaviour(Il2CppApi& api, void* klass) {
 // 0 params) em TODOS os assemblies de jogo (nao-sistema). A Unity NATIVA chama
 // esses via methodPointer, entao sao hookaveis. Prioriza nomes de loop.
 void dump_monobehaviours(Il2CppApi& api) {
-    FILE* f = std::fopen("/data/data/com.silkroad.mb/files/sro_mb.txt", "w");
+    FILE* f = open_game_file("sro_mb.txt");
     if (!f) return;
     void* domain = api.domain_get();
     size_t count = 0;
@@ -2467,7 +2494,7 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
         void* player = current_player(g_api, g_xmain);
         if (!player) return "{\"ok\":false,\"erro\":\"sem player (em mundo?)\"}";
         std::lock_guard<std::mutex> lk(g_read_mu);
-        FILE* f = std::fopen("/data/data/com.silkroad.mb/files/sro_search.txt", "w");
+        FILE* f = open_game_file("sro_search.txt");
         if (f) {
             std::fprintf(f, "TARGET %d  player=%p\n", target, player);
             FaultGuard guard;
@@ -2495,7 +2522,7 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
         // despeja seus metodos + se tem singleton. Para achar managers (ex.:
         // auto-hunt) sem adivinhar.
         std::lock_guard<std::mutex> lk(g_read_mu);
-        FILE* f = std::fopen("/data/data/com.silkroad.mb/files/sro_find.txt", "w");
+        FILE* f = open_game_file("sro_find.txt");
         if (!f) return "{\"ok\":false,\"erro\":\"sem arquivo\"}";
         void* domain = g_api.domain_get();
         size_t count = 0;
@@ -2558,7 +2585,7 @@ std::string dispatch_command(const std::string& tag, const std::string& body) {
         std::string err = walk_path(path, path.size(), obj);
         if (!err.empty()) return err;
         FaultGuard guard;
-        FILE* f = std::fopen("/data/data/com.silkroad.mb/files/sro_objv.txt", "w");
+        FILE* f = open_game_file("sro_objv.txt");
         if (!f) return "{\"ok\":false,\"erro\":\"sem arquivo\"}";
         int n = dump_object_typed(g_api, obj, body.c_str(), f);
         std::fclose(f);
