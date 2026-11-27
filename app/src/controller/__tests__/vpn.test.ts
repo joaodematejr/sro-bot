@@ -8,8 +8,11 @@ import {
   HEALTH_RETRY_MS,
   gameServerIps,
   missingIps,
+  noProbeText,
   parsePing,
   parseServiceState,
+  probeIp,
+  seedIps,
   tunnelIps,
 } from "../vpn";
 
@@ -102,4 +105,29 @@ test("saude do tunel: mudo reinicia, sem internet nao mexe, parado pelo check te
   assert.equal(healthAction("stopped", false, true, 1000, 1000 + HEALTH_RETRY_MS), "retry");
   assert.equal(healthAction("stopped", false, true, 0, 99e9), "none"); // parado por outro motivo
   assert.equal(healthAction("missing", false, true, 1, 99e9), "none");
+});
+
+test("IPs fixos por versao do jogo", () => {
+  assert.deepEqual(seedIps("global"), ["13.250.144.245", "54.169.246.199"]);
+  // Europa: nenhum IP conhecido antes de o servidor abrir.
+  assert.deepEqual(seedIps("eu"), []);
+});
+
+test("IP do ping e do check do tunel: sempre da versao escolhida e nunca o center", () => {
+  // Global sem jogo conectado: o servidor de jogo fixo (o center so atende no login).
+  assert.equal(probeIp("global", []), "54.169.246.199");
+  // Global conectado em outro servidor: a conexao viva vem primeiro.
+  assert.equal(probeIp("global", ["13.250.144.245", "18.140.1.2"]), "18.140.1.2");
+  // Europa sem jogo conectado: nenhum IP (nunca cai num IP da Global).
+  assert.equal(probeIp("eu", []), undefined);
+  assert.equal(probeIp("eu", [], ["13.250.144.245", "54.169.246.199"]), undefined);
+  // Europa conectada: o IP que o jogo usa.
+  assert.equal(probeIp("eu", ["3.120.0.10"]), "3.120.0.10");
+  // Check do tunel: so IP que esta no tunel (fora dele o ping vai direto).
+  assert.equal(probeIp("eu", ["3.120.0.10"], ["54.169.246.199"]), undefined);
+  assert.equal(probeIp("eu", ["3.120.0.10", "3.120.0.11"], ["3.120.0.11"]), "3.120.0.11");
+  // Global com o servidor fixo fora do tunel (ex.: tunel montado na Europa).
+  assert.equal(probeIp("global", [], ["3.120.0.10"]), undefined);
+  assert.equal(probeIp("global", ["18.140.1.2"], ["13.250.144.245", "54.169.246.199"]), "54.169.246.199");
+  assert.match(noProbeText("eu"), /sem IP do servidor da Europa/);
 });

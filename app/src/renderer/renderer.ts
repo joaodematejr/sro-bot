@@ -79,6 +79,7 @@ declare global {
       inject: () => Promise<{ ok: boolean; erro?: string }>;
       restore: () => Promise<{ ok: boolean; erro?: string }>;
       gameForeground: () => Promise<boolean>;
+      otherGame: () => Promise<{ version: "global" | "eu"; foreground: boolean; text: string } | null>;
       reopen: (restart?: boolean) => Promise<{ ok: boolean; mode?: string; erro?: string }>;
       connectionLost: () => Promise<"" | "lost" | "kicked">;
       autoFight: (on: boolean) => Promise<{ ok?: boolean; method?: number; erro?: string }>;
@@ -258,6 +259,7 @@ interface SettingsUi {
   mumuDir: string;
   instance: number;
   adbPath: string;
+  game: "global" | "eu";
 }
 
 interface SettingsView {
@@ -268,6 +270,7 @@ interface SettingsView {
 }
 
 function showSettings(v: SettingsView): void {
+  ($("st-game") as HTMLSelectElement).value = v.settings.game;
   ($("st-emu") as HTMLSelectElement).value = v.settings.emulator;
   ($("st-lddir") as HTMLInputElement).value = v.settings.ldplayerDir;
   ($("st-mumudir") as HTMLInputElement).value = v.settings.mumuDir;
@@ -276,7 +279,13 @@ function showSettings(v: SettingsView): void {
   $("st-serial").textContent = v.serial;
   $("st-adbinfo").textContent = "adb em uso: " + v.adb;
   $("inst-name").textContent = v.settings.emulator === "mumu" ? "MuMu Player" : "LDPlayer";
-  $("inst-info").textContent = `${v.settings.emulator} · idx ${v.settings.instance} · ${v.serial}`;
+  const game = v.settings.game === "eu" ? "Europa" : "Global";
+  // Selo do topo: dourado no Global, azul na Europa (classes literais pro Tailwind).
+  const badge = $("game-badge");
+  badge.textContent = game;
+  badge.className = v.settings.game === "eu" ? "pill bg-info/20 text-info font-semibold" : "pill bg-gold/20 text-gold font-semibold";
+  void checkOtherGame();
+  $("inst-info").textContent = `${v.settings.emulator} · idx ${v.settings.instance} · ${v.serial} · ${game}`;
 }
 
 function readSettingsUi(): SettingsUi {
@@ -287,6 +296,7 @@ function readSettingsUi(): SettingsUi {
     mumuDir: ($("st-mumudir") as HTMLInputElement).value.trim(),
     instance: Number.isFinite(n) && n >= 0 ? n : 0,
     adbPath: ($("st-adb") as HTMLInputElement).value.trim(),
+    game: ($("st-game") as HTMLSelectElement).value === "eu" ? "eu" : "global",
   };
 }
 
@@ -299,6 +309,8 @@ interface VpnView {
   ips: string[]; // no tunel
   seen: string[]; // que o jogo usa agora
   missing: string[]; // do jogo, fora do tunel
+  probe?: string; // IP do ping, da versao do jogo escolhida
+  noProbe?: string; // por que nao ha IP pra medir
 }
 
 const appStartedAt = Date.now();
@@ -355,8 +367,16 @@ async function vpnAction(fn: () => Promise<{ ok: boolean; erro?: string }>): Pro
 }
 
 async function measureVpnPing(): Promise<void> {
-  // Servidor de jogo que o jogo usa agora (o center so atende no login).
-  const ip = lastVpn?.seen.find((i) => i !== "13.250.144.245") ?? "54.169.246.199";
+  // Servidor de jogo da versao escolhida (o main escolhe: conexao viva do jogo,
+  // senao um IP fixo da versao, nunca o center). Le de novo antes de medir.
+  await refreshVpn();
+  const ip = lastVpn?.probe;
+  if (!ip) {
+    const why = lastVpn?.noProbe ?? "sem IP do servidor de jogo pra medir";
+    $("vpn-ping").textContent = why;
+    log(`[vpn] ping: ${why}.`);
+    return;
+  }
   $("vpn-ping").textContent = `medindo ${ip}...`;
   const r = await window.sro.vpnPing(ip);
   const text = r.avgMs === undefined ? `${ip}: sem resposta` : `${ip}: ${r.avgMs} ms, perda ${r.lossPct ?? "?"}%`;
@@ -2562,6 +2582,35 @@ async function onActivityToggle(id: string): Promise<void> {
   }
 }
 
+// ---- Outra versao do jogo aberta (os dois APKs no mesmo emulador) ----
+
+// O bot so controla a versao da configuracao. Se a outra estiver aberta, o selo
+// amarelo do topo avisa e o log diz uma vez quando aparece e quando some.
+let otherGameChecking = false;
+let otherGameShown = "";
+
+async function checkOtherGame(): Promise<void> {
+  if (otherGameChecking) return;
+  otherGameChecking = true;
+  try {
+    const o = await window.sro.otherGame().catch(() => null);
+    const pill = $("game-other-alert");
+    const key = o ? `${o.version}:${o.foreground}` : "";
+    pill.classList.toggle("hidden", !o);
+    if (o) {
+      pill.textContent = `${o.version === "eu" ? "Europa" : "Global"} aberta${o.foreground ? "" : " (fundo)"}`;
+      pill.title = o.text;
+    }
+    if (key !== otherGameShown) {
+      if (o) log(o.text);
+      else if (otherGameShown) log("a outra versao do jogo foi fechada.");
+      otherGameShown = key;
+    }
+  } finally {
+    otherGameChecking = false;
+  }
+}
+
 // Watchdog: com o bot rodando e o jogo marcado como aberto, se o processo do
 // jogo cair, reabre (injeta + sobe + loga via auto-login) e retoma as atividades.
 // Uma checagem por vez: com o adb lento a pergunta passa dos 5 s do ciclo e
@@ -2605,6 +2654,12 @@ async function watchdogOnce(): Promise<void> {
     return; // nao deu pra checar; tenta no proximo ciclo
   }
   if (fg && !lost && !stalled) return; // jogo em primeiro plano e conectado, nada a fazer
+  if (!fg) {
+    // Fora da frente porque a outra versao do jogo foi aberta? Fica no log antes
+    // de o watchdog trazer a versao configurada de volta.
+    const other = await window.sro.otherGame().catch(() => null);
+    if (other?.foreground) log(`[wd] ${other.text} Trazendo a versao configurada de volta.`);
+  }
   watchdogBusy = true;
   if (lost || stalled) {
     connDrops.push(Date.now());
@@ -3402,6 +3457,8 @@ function wire(): void {
   // Convite de Qigong: some em 15 s.
   window.setInterval(() => void maybeAcceptQigong().catch(() => undefined), 4000);
   void window.sro.getSettings().then(showSettings);
+  // Outra versao do jogo aberta: confere a cada 15 s (leitura sem root).
+  window.setInterval(() => void checkOtherGame(), 15 * 1000);
   $("btn-st-save").addEventListener("click", async () => {
     if (gameOpen) {
       log("feche o jogo antes de trocar a configuracao.");

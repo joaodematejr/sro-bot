@@ -12,9 +12,11 @@ import {
   gameServerIps,
   healthAction,
   missingIps,
+  noProbeText,
   parsePing,
   parseServiceState,
-  SEED_IPS,
+  probeIp,
+  seedIps,
   type ServiceState,
   TUNNEL_NAME,
   tunnelIps,
@@ -22,15 +24,14 @@ import {
   WGCF_SHA256,
   WGCF_URL,
 } from "../controller/vpn";
-import { adbBin } from "./adbbin";
+import { GAME_LABELS, type GameVersion } from "../controller/settings";
+import { adbBin, gamePkg } from "./adbbin";
 
 const execFileP = promisify(execFile);
 type Log = (msg: string) => void;
 
 const WIREGUARD_EXE = "C:\\Program Files\\WireGuard\\wireguard.exe";
 const WHOAMI_EXE = "C:\\Windows\\System32\\whoami.exe";
-const CENTER_IP = SEED_IPS[0];
-const GAME_PKG = "com.silkroad.mb";
 
 let dir = "";
 
@@ -152,24 +153,24 @@ function afterInstallLines(sid: string | undefined, probe: string): string[] {
   ];
 }
 
-// IP pra testar o tunel: o servidor de jogo (o center so atende no login).
-function probeIp(ips: string[]): string {
-  return ips.find((ip) => ip !== CENTER_IP) ?? SEED_IPS[1];
-}
-
-// Liga a rota pela VPN com os IPs dados (mais os fixos). Reinstala se ja existir.
-export async function vpnEnable(ips: string[], log: Log): Promise<VpnStatus> {
+// Liga a rota pela VPN com os IPs dados (mais os fixos da versao do jogo
+// escolhida). Reinstala se ja existir. Sem nenhum IP (Europa antes de o bot ver
+// a conexao do jogo) nao monta tunel vazio.
+export async function vpnEnable(ips: string[], log: Log, game: GameVersion): Promise<VpnStatus> {
   if (!fs.existsSync(WIREGUARD_EXE)) throw new Error("WireGuard nao instalado (https://www.wireguard.com/install)");
+  const all = [...new Set([...seedIps(game), ...ips])].sort();
+  if (!all.length) throw new Error(`${noProbeText(game)}; depois clique em Ligar VPN de novo`);
   fs.mkdirSync(dir, { recursive: true });
   const profile = await ensureProfile(log);
-  const all = [...new Set([...SEED_IPS, ...ips])].sort();
+  // IP do teste do tunel depois de instalar: da mesma versao (all nunca esta vazio).
+  const probe = probeIp(game, ips, all) ?? all[0];
   const before = await serviceState();
   const current = (await vpnStatus()).ips;
   // Mesmos IPs e tunel instalado: nao reinstala (a reinstalacao deixou o tunel
   // mudo por 17 min); so libera o reinicio automatico e conserta se estiver mudo.
   if (before !== "missing" && all.length === current.length && all.every((ip) => current.includes(ip))) {
     log("o tunel ja tem esses IPs; liberando o reinicio automatico (aceite o pedido de administrador do Windows)...");
-    await elevated([`Start-Service -Name '${WG_SERVICE}'`, ...afterInstallLines(await userSid(), probeIp(all))]);
+    await elevated([`Start-Service -Name '${WG_SERVICE}'`, ...afterInstallLines(await userSid(), probe)]);
     const st = await vpnStatus();
     log(st.service === "running" ? "VPN ligada; reinicio automatico liberado." : "o tunel nao subiu");
     return st;
@@ -179,7 +180,7 @@ export async function vpnEnable(ips: string[], log: Log): Promise<VpnStatus> {
   await elevated([
     ...(before === "missing" ? [] : [uninstallLine]),
     `& '${WIREGUARD_EXE}' /installtunnelservice '${confPath()}'`,
-    ...afterInstallLines(await userSid(), probeIp(all)),
+    ...afterInstallLines(await userSid(), probe),
   ]);
   for (let i = 0; i < 10 && (await serviceState()) !== "running"; i++) await new Promise((r) => setTimeout(r, 1000));
   const st = await vpnStatus();
@@ -201,7 +202,7 @@ export async function vpnDisable(log: Log): Promise<VpnStatus> {
 export async function gameIps(serial: string): Promise<{ seen: string[]; missing: string[] }> {
   const sh = async (cmd: string) =>
     (await execFileP(adbBin(), ["-s", serial, "shell", cmd], { timeout: 15000 })).stdout.replace(/\r/g, "");
-  const dump = await sh(`dumpsys package ${GAME_PKG} | grep userId=`);
+  const dump = await sh(`dumpsys package ${gamePkg()} | grep userId=`);
   const uid = Number(/userId=(\d+)/.exec(dump)?.[1]);
   if (!uid) return { seen: [], missing: [] };
   const seen = gameServerIps(await sh("cat /proc/net/tcp /proc/net/tcp6"), uid);
@@ -232,10 +233,21 @@ let fallbackAt = 0; // quando o check desligou o tunel (rota direta)
 // Check de saude: tunel ligado e mudo reinicia (sem UAC, com o direito dado na
 // instalacao); continua mudo, desliga (o jogo vai pela rota direta) e tenta de
 // novo depois. Sem internet nao mexe em nada.
-export async function vpnHealth(log: Log): Promise<void> {
+let noProbeLogged = "";
+
+// `seen`: conexoes vivas do jogo da versao escolhida (gameIps). O IP de teste e
+// dessa versao e esta no tunel; sem nenhum, nao testa nem mexe no tunel.
+export async function vpnHealth(log: Log, game: GameVersion, seen: string[]): Promise<void> {
   const st = await vpnStatus();
   if (st.service === "missing") return;
-  const probe = probeIp(st.ips);
+  const probe = probeIp(game, seen, st.ips);
+  if (!probe) {
+    // Avisa uma vez por versao (o check roda a cada 2 min).
+    if (noProbeLogged !== game) log(`check do tunel da ${GAME_LABELS[game]} parado: ${noProbeText(game)}.`);
+    noProbeLogged = game;
+    return;
+  }
+  noProbeLogged = "";
   const tunnelOk = st.service === "running" && (await pingOk(probe));
   const internetOk = tunnelOk || (await pingOk("1.1.1.1"));
   const act = healthAction(st.service, tunnelOk, internetOk, fallbackAt, Date.now());

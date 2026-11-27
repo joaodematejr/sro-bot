@@ -2,10 +2,18 @@ import assert from "node:assert";
 import { test } from "node:test";
 
 import {
+  backupDirName,
   consolePath,
   DEFAULT_SETTINGS,
+  focusedPackage,
+  gameChecks,
+  gamePackage,
   libDirFromPmPath,
   normalizeSettings,
+  otherGame,
+  otherGameOpen,
+  otherGameText,
+  parseGameVersion,
   LD_UNSTICK_AFTER_MS,
   parseMumuInfo,
   parseTasklist,
@@ -91,4 +99,68 @@ test("pasta das libs pelo pm path, no Android 9 e no 11+", () => {
   assert.equal(libDirFromPmPath("package:/data/app/~~Zx1==/com.silkroad.mb-Qw2==/base.apk\npackage:/data/app/~~Zx1==/com.silkroad.mb-Qw2==/split_config.arm64_v8a.apk"),
     "/data/app/~~Zx1==/com.silkroad.mb-Qw2==/lib/arm64");
   assert.equal(libDirFromPmPath(""), undefined);
+});
+
+test("versao do jogo: pacote, normalizacao e pasta do backup", () => {
+  assert.equal(gamePackage("global"), "com.silkroad.mb");
+  assert.equal(gamePackage("eu"), "com.hive.silkroad");
+  assert.equal(parseGameVersion("eu"), "eu");
+  assert.equal(parseGameVersion("x"), "global");
+  assert.equal(parseGameVersion(undefined), "global");
+  // settings.json antigo (sem o campo) continua no Global.
+  assert.equal(normalizeSettings({ emulator: "mumu" }).game, "global");
+  assert.equal(normalizeSettings({ game: "eu" }).game, "eu");
+  // Global mantem o nome antigo da pasta; Europa ganha o pacote no nome.
+  assert.equal(backupDirName("127.0.0.1:5555", "com.silkroad.mb"), "127.0.0.1_5555");
+  assert.equal(backupDirName("127.0.0.1:5555", "com.hive.silkroad"), "127.0.0.1_5555_com.hive.silkroad");
+  assert.equal(backupDirName("emulator-5554", "com.hive.silkroad"), "emulator-5554_com.hive.silkroad");
+});
+
+// Pacote da Europa no MuMu (Android 12), saida real do `pm path` em 2026-11-27.
+test("libDirFromPmPath acha a pasta do APK da Europa", () => {
+  assert.equal(libDirFromPmPath("package:/data/app/~~Can2kNvel35DliA_PxVieA==/com.hive.silkroad-Jaf5YN5qqQufWK5IwqqBNA==/base.apk\n"),
+    "/data/app/~~Can2kNvel35DliA_PxVieA==/com.hive.silkroad-Jaf5YN5qqQufWK5IwqqBNA==/lib/arm64");
+});
+
+// Saidas reais do MuMu em 2026-11-27: Europa na frente e o launcher na frente.
+const FOCUS_EU = "  mCurrentFocus=Window{412aee7 u0 com.hive.silkroad/com.gihot.unityplugin.GihotGameActivity}";
+const FOCUS_HOME = "  mCurrentFocus=Window{708c728 u0 app.lawnchair/app.lawnchair.LawnchairLauncher}";
+
+test("pacote da janela em foco", () => {
+  assert.equal(focusedPackage(FOCUS_EU), "com.hive.silkroad");
+  assert.equal(focusedPackage(FOCUS_HOME), "app.lawnchair");
+  assert.equal(focusedPackage(""), undefined);
+  assert.equal(focusedPackage("mCurrentFocus=null"), undefined);
+});
+
+test("outra versao do jogo aberta: na frente, em segundo plano ou fechada", () => {
+  assert.equal(otherGame("global"), "eu");
+  assert.equal(otherGame("eu"), "global");
+  // Configurado Global, Europa na frente.
+  assert.deepEqual(otherGameOpen("global", focusedPackage(FOCUS_EU), true), { version: "eu", foreground: true });
+  // Europa minimizada (launcher na frente, processo vivo).
+  assert.deepEqual(otherGameOpen("global", focusedPackage(FOCUS_HOME), true), { version: "eu", foreground: false });
+  // Europa fechada.
+  assert.equal(otherGameOpen("global", focusedPackage(FOCUS_HOME), false), undefined);
+  // Configurado Europa e ela mesma na frente: nao e "a outra".
+  assert.equal(otherGameOpen("eu", focusedPackage(FOCUS_EU), false), undefined);
+  // Configurado Europa, Global na frente.
+  assert.deepEqual(otherGameOpen("eu", "com.silkroad.mb", true), { version: "global", foreground: true });
+  const txt = otherGameText("global", { version: "eu", foreground: true });
+  assert.match(txt, /Europa \(com\.hive\.silkroad\) esta aberta na frente/);
+  assert.match(txt, /so controla a Global/);
+  assert.match(otherGameText("eu", { version: "global", foreground: false }), /segundo plano/);
+});
+
+test("Testar conexao lista os dois APKs e so o selecionado pode falhar", () => {
+  const both = gameChecks("eu", { global: true, eu: true });
+  assert.deepEqual(both.map((c) => c.name), ["jogo Global", "jogo Europa"]);
+  assert.deepEqual(both.map((c) => c.ok), [true, true]);
+  assert.equal(both[1].detail, "com.hive.silkroad instalado (selecionado: o bot usa este)");
+  assert.equal(both[0].detail, "com.silkroad.mb instalado (nao selecionado)");
+  // Selecionado sem APK: falha. O outro ausente nao e problema.
+  const miss = gameChecks("eu", { global: true, eu: false });
+  assert.deepEqual(miss.map((c) => c.ok), [true, false]);
+  assert.equal(miss[1].detail, "com.hive.silkroad nao instalado (selecionado: o bot usa este)");
+  assert.deepEqual(gameChecks("global", { global: true, eu: false }).map((c) => c.ok), [true, true]);
 });

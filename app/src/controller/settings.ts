@@ -8,12 +8,37 @@
 
 export type EmulatorKind = "ldplayer" | "mumu";
 
+// Versao do jogo: cada uma e um APK proprio (pacote Android diferente), e as
+// duas podem estar instaladas no mesmo emulador.
+//   global: com.silkroad.mb (2.3.x, Unity 6000.0.60f1)
+//   eu:     com.hive.silkroad (Europa, publicado pela Hive, Unity 6000.0.77f1)
+export type GameVersion = "global" | "eu";
+
+export const GAME_PACKAGES: Record<GameVersion, string> = {
+  global: "com.silkroad.mb",
+  eu: "com.hive.silkroad",
+};
+
+export const GAME_LABELS: Record<GameVersion, string> = {
+  global: "Global",
+  eu: "Europa",
+};
+
+export function gamePackage(g: GameVersion): string {
+  return GAME_PACKAGES[g] ?? GAME_PACKAGES.global;
+}
+
+export function parseGameVersion(v: unknown): GameVersion {
+  return v === "eu" ? "eu" : "global";
+}
+
 export interface AppSettings {
   emulator: EmulatorKind;
   ldplayerDir: string; // pasta com ldconsole.exe e adb.exe
   mumuDir: string; // pasta com nx_main\MuMuManager.exe
   instance: number; // indice da instancia no emulador (0, 1, ...)
   adbPath: string; // vazio = o adb do emulador, senao o do PATH
+  game: GameVersion; // qual APK do jogo o bot controla
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -22,7 +47,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
   mumuDir: "C:\\Program Files\\Netease\\MuMuPlayer",
   instance: 0,
   adbPath: "",
+  game: "global",
 };
+
+// Pasta do backup do libmain.so por emulador E por jogo: com os dois APKs no
+// mesmo emulador, o backup de um nao pode sobrescrever o do outro. O Global
+// fica no nome antigo (so o serial) pra achar os backups ja guardados.
+export function backupDirName(serial: string, pkg: string): string {
+  const s = serial.replace(/[^\w.-]/g, "_");
+  return pkg === GAME_PACKAGES.global ? s : `${s}_${pkg.replace(/[^\w.-]/g, "_")}`;
+}
 
 export function joinWin(dir: string, file: string): string {
   return dir.replace(/[\\/]+$/, "") + "\\" + file;
@@ -57,6 +91,7 @@ export function normalizeSettings(raw: Partial<AppSettings> | null | undefined):
     mumuDir: dir(r.mumuDir, DEFAULT_SETTINGS.mumuDir),
     instance: Number.isFinite(inst) && inst >= 0 && inst <= 99 ? Math.floor(inst) : DEFAULT_SETTINGS.instance,
     adbPath: typeof r.adbPath === "string" ? r.adbPath.trim() : "",
+    game: parseGameVersion(r.game),
   };
 }
 
@@ -133,4 +168,51 @@ export interface CheckResult {
   name: string;
   ok: boolean;
   detail: string;
+}
+
+// ---- Os dois APKs no mesmo emulador ----
+
+export function otherGame(g: GameVersion): GameVersion {
+  return g === "eu" ? "global" : "eu";
+}
+
+// Pacote da janela em foco, da saida do `dumpsys window | grep mCurrentFocus`
+// (visto no MuMu em 2026-11-27):
+//   mCurrentFocus=Window{412aee7 u0 com.hive.silkroad/com.gihot.unityplugin.GihotGameActivity}
+export function focusedPackage(out: string): string | undefined {
+  return /mCurrentFocus=Window\{\S+ \S+ ([\w.]+)\//.exec(out)?.[1];
+}
+
+export interface OtherGameOpen {
+  version: GameVersion; // a versao que NAO esta na configuracao
+  foreground: boolean; // na frente (senao so o processo vivo em segundo plano)
+}
+
+// O outro APK esta aberto? Na frente pelo foco; em segundo plano pelo pidof
+// (sair pro launcher deixa o processo vivo).
+export function otherGameOpen(selected: GameVersion, focusedPkg: string | undefined, otherRunning: boolean): OtherGameOpen | undefined {
+  const other = otherGame(selected);
+  const foreground = focusedPkg === gamePackage(other);
+  if (!foreground && !otherRunning) return undefined;
+  return { version: other, foreground };
+}
+
+export function otherGameText(selected: GameVersion, o: OtherGameOpen): string {
+  const where = o.foreground ? "esta aberta na frente" : "esta aberta em segundo plano";
+  return `a versao ${GAME_LABELS[o.version]} (${gamePackage(o.version)}) ${where}, mas o bot esta configurado pra ${GAME_LABELS[selected]}: ele so controla a ${GAME_LABELS[selected]}.`;
+}
+
+// Linhas do "Testar conexao" pros dois APKs. So o selecionado precisa estar
+// instalado; o outro e informativo e nunca conta como falha.
+export function gameChecks(selected: GameVersion, installed: Record<GameVersion, boolean>): CheckResult[] {
+  return (["global", "eu"] as GameVersion[]).map((g) => {
+    const pkg = gamePackage(g);
+    const sel = g === selected;
+    const inst = installed[g] ? "instalado" : "nao instalado";
+    return {
+      name: `jogo ${GAME_LABELS[g]}`,
+      ok: sel ? installed[g] : true,
+      detail: sel ? `${pkg} ${inst} (selecionado: o bot usa este)` : `${pkg} ${inst} (nao selecionado)`,
+    };
+  });
 }

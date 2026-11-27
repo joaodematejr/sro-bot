@@ -15,6 +15,8 @@
           <span class="text-gold text-lg font-bold tracking-wide">SRO</span>
           <span class="text-gray-300 text-lg font-light">Bot</span>
         </div>
+        <span id="game-badge" class="pill bg-gold/20 text-gold font-semibold" title="Versão do jogo que o bot controla (Configuração > Versão do jogo)">Global</span>
+        <span id="game-other-alert" class="pill bg-warn/20 text-warn hidden" title="">outra versão aberta</span>
         <span id="bag-alert" class="pill bg-danger/20 text-danger hidden" title="">mochila</span>
         <span id="exp-alert" class="pill bg-danger/20 text-danger hidden" title="">EXP/h caiu</span>
         <span id="conn" class="pill bg-ink-600 text-muted">
@@ -740,9 +742,15 @@
               <div class="panel p-4 space-y-3">
                 <div>
                   <div class="text-sm font-semibold">Configuração</div>
-                  <div class="text-xs text-muted">qual emulador, onde ele está e qual instância o bot usa</div>
+                  <div class="text-xs text-muted">qual versão do jogo, qual emulador, onde ele está e qual instância o bot usa</div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-300">
+                  <label class="flex items-center gap-2 md:col-span-2">Versão do jogo
+                    <select id="st-game" class="bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100">
+                      <option value="global">Global (com.silkroad.mb)</option>
+                      <option value="eu">Europa (com.hive.silkroad)</option>
+                    </select>
+                  </label>
                   <label class="flex items-center gap-2 md:col-span-2">Emulador
                     <select id="st-emu" class="bg-ink-600 border border-line rounded px-2 py-0.5 text-gray-100">
                       <option value="ldplayer">LDPlayer 9</option>

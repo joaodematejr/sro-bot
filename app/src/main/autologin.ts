@@ -33,14 +33,13 @@ import {
   updateActive,
   updateMakingProgress,
 } from "../controller/update";
-import { adbBin } from "./adbbin";
+import { adbBin, gamePkg } from "./adbbin";
 import { hasCredentials } from "./credentials";
 import { sdkLogin } from "./sdklogin";
 import { adbForward, queryPlayer, sendCommand } from "./engine";
 
 const execFileP = promisify(execFile);
 
-const PACKAGE = "com.silkroad.mb";
 // Mesmo alvo repetido antes disso e ignorado: handlers de UI levam um frame ou
 // mais pra trocar o painel, e chamar de novo no meio reseta o fluxo.
 const SAME_ACTION_COOLDOWN_MS = 5000;
@@ -169,7 +168,7 @@ export async function autoLogin(
   if (doLaunch) {
     log("iniciando o jogo...");
     await execFileP(adbBin(), [
-      "-s", serial, "shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1",
+      "-s", serial, "shell", "monkey", "-p", gamePkg(), "-c", "android.intent.category.LAUNCHER", "1",
     ], { timeout: 30000 }).catch(() => {});
   }
   await adbForward(serial, port).catch(() => {});

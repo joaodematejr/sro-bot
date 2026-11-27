@@ -1,6 +1,6 @@
-// adb e emulador em uso (definidos pela configuracao do app).
+// adb, emulador e versao do jogo em uso (definidos pela configuracao do app).
 
-import { type AppSettings, DEFAULT_SETTINGS } from "../controller/settings";
+import { type AppSettings, DEFAULT_SETTINGS, gamePackage } from "../controller/settings";
 
 let adb = "adb";
 let emu: AppSettings = { ...DEFAULT_SETTINGS };
@@ -19,4 +19,9 @@ export function setEmulator(s: AppSettings): void {
 
 export function emulator(): AppSettings {
   return emu;
+}
+
+// Pacote Android do jogo escolhido (Global ou Europa).
+export function gamePkg(): string {
+  return gamePackage(emu.game);
 }
